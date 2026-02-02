@@ -44,7 +44,14 @@ function App() {
   });
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
-  
+
+  // Filter State
+  const [filterCustomer, setFilterCustomer] = useState('');
+  const [filterCity, setFilterCity] = useState('');
+  const [filterMinValue, setFilterMinValue] = useState('');
+  const [filterMaxValue, setFilterMaxValue] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+
   // Selection State
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
@@ -588,8 +595,38 @@ function App() {
   };
 
   const InvoiceSelectionView = () => {
-    // ... (no changes needed)
-    const availableInvoices = invoices.filter(inv => !inv.isAssigned);
+    const availableInvoices = useMemo(() => {
+      let filtered = invoices.filter(inv => !inv.isAssigned);
+
+      if (filterCustomer) {
+        filtered = filtered.filter(inv =>
+          inv.customerName.toLowerCase().includes(filterCustomer.toLowerCase())
+        );
+      }
+
+      if (filterCity) {
+        filtered = filtered.filter(inv =>
+          inv.customerCity.toLowerCase().includes(filterCity.toLowerCase())
+        );
+      }
+
+      if (filterMinValue) {
+        const min = parseFloat(filterMinValue);
+        if (!isNaN(min)) {
+          filtered = filtered.filter(inv => inv.totalValue >= min);
+        }
+      }
+
+      if (filterMaxValue) {
+        const max = parseFloat(filterMaxValue);
+        if (!isNaN(max)) {
+          filtered = filtered.filter(inv => inv.totalValue <= max);
+        }
+      }
+
+      return filtered;
+    }, [invoices, filterCustomer, filterCity, filterMinValue, filterMaxValue]);
+
     const toggleInvoice = (id: string) => {
       const next = new Set(selectedInvoiceIds);
       if (next.has(id)) next.delete(id);
@@ -608,6 +645,70 @@ function App() {
       setCurrentView('MAP_DETAIL');
     };
 
+    const handleDownloadPickingList = () => {
+      if (selectedInvoiceIds.size === 0) return;
+
+      const selectedInvs = invoices.filter(inv => selectedInvoiceIds.has(inv.id));
+      const doc = new jsPDF();
+
+      doc.setFontSize(20);
+      doc.text('Lista de Separação', 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 28);
+      doc.text(`Total de Notas: ${selectedInvs.length}`, 14, 34);
+
+      let yPosition = 45;
+
+      selectedInvs.forEach((inv, invIndex) => {
+        if (yPosition > 270) {
+          doc.addPage();
+          yPosition = 20;
+        }
+
+        doc.setFontSize(14);
+        doc.setFont(undefined, 'bold');
+        doc.text(`NF: ${inv.number} - ${inv.customerName}`, 14, yPosition);
+        yPosition += 6;
+
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Cidade: ${inv.customerCity}`, 14, yPosition);
+        yPosition += 5;
+        doc.text(`Valor Total: R$ ${inv.totalValue.toFixed(2)} | Peso Total: ${inv.totalWeight.toFixed(2)} kg`, 14, yPosition);
+        yPosition += 8;
+
+        const tableData = inv.items.map(item => [
+          item.sku,
+          item.description,
+          item.quantity.toString(),
+          item.unit,
+          `${item.weightKg.toFixed(2)} kg`,
+          ''
+        ]);
+
+        autoTable(doc, {
+          startY: yPosition,
+          head: [['SKU', 'Descrição', 'Qtd', 'UN', 'Peso', 'Separado']],
+          body: tableData,
+          theme: 'grid',
+          styles: { fontSize: 9 },
+          headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold' },
+          margin: { left: 14, right: 14 },
+        });
+
+        yPosition = (doc as any).lastAutoTable.finalY + 10;
+      });
+
+      doc.save(`lista-separacao-${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
+    const clearFilters = () => {
+      setFilterCustomer('');
+      setFilterCity('');
+      setFilterMinValue('');
+      setFilterMaxValue('');
+    };
+
     return (
       <div className="space-y-8 animate-in fade-in duration-500">
         <div className="flex justify-between items-center pb-6 border-b border-border">
@@ -616,7 +717,7 @@ function App() {
              <p className="text-text-secondary mt-2 text-xl">Selecione as notas para criar um novo mapa.</p>
            </div>
            <div className="flex gap-4">
-                <button 
+                <button
                  onClick={handleSyncErp}
                  disabled={isSyncing}
                  className="bg-white border-2 border-slate-200 text-text-secondary hover:text-primary hover:border-primary px-6 py-5 rounded-2xl font-bold text-lg transition-all flex items-center gap-3"
@@ -624,7 +725,15 @@ function App() {
                  <RefreshCcw size={24} className={isSyncing ? "animate-spin" : ""} />
                  {isSyncing ? "Sincronizando..." : "Sincronizar ERP"}
                </button>
-               <button 
+               <button
+                 disabled={selectedInvoiceIds.size === 0}
+                 onClick={handleDownloadPickingList}
+                 className="bg-white border-2 border-slate-200 text-text-secondary hover:text-emerald-600 hover:border-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed px-6 py-5 rounded-2xl font-bold text-lg transition-all flex items-center gap-3"
+               >
+                 <Download size={24} />
+                 Download Lista
+               </button>
+               <button
                  disabled={selectedInvoiceIds.size === 0}
                  onClick={handleCreateMap}
                  className="bg-primary hover:bg-primaryLight disabled:opacity-50 disabled:cursor-not-allowed text-white px-10 py-5 rounded-2xl font-bold text-lg shadow-lg shadow-primary/20 transition-all flex items-center gap-3"
@@ -640,6 +749,77 @@ function App() {
                 <AlertCircle size={20} /> Falha na sincronização: {syncError}
              </div>
         )}
+
+        <div className="bg-white rounded-3xl shadow-soft p-6 border border-border/50">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Filter size={24} className="text-primary" />
+              <h3 className="text-xl font-bold text-text-main">Filtros</h3>
+              <span className="text-sm text-text-light">({availableInvoices.length} notas encontradas)</span>
+            </div>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-text-secondary hover:bg-background transition-colors"
+            >
+              {showFilters ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              {showFilters ? 'Ocultar' : 'Mostrar'}
+            </button>
+          </div>
+
+          {showFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-border">
+              <div>
+                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block">Cliente</label>
+                <input
+                  type="text"
+                  value={filterCustomer}
+                  onChange={(e) => setFilterCustomer(e.target.value)}
+                  placeholder="Nome do cliente"
+                  className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block">Cidade</label>
+                <input
+                  type="text"
+                  value={filterCity}
+                  onChange={(e) => setFilterCity(e.target.value)}
+                  placeholder="Cidade"
+                  className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block">Valor Mínimo</label>
+                <input
+                  type="number"
+                  value={filterMinValue}
+                  onChange={(e) => setFilterMinValue(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block">Valor Máximo</label>
+                <input
+                  type="number"
+                  value={filterMaxValue}
+                  onChange={(e) => setFilterMaxValue(e.target.value)}
+                  placeholder="999999.99"
+                  className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
+                />
+              </div>
+              <div className="md:col-span-4 flex justify-end">
+                <button
+                  onClick={clearFilters}
+                  className="flex items-center gap-2 px-6 py-2 bg-slate-100 hover:bg-slate-200 text-text-secondary rounded-xl font-bold transition-all"
+                >
+                  <XCircle size={18} />
+                  Limpar Filtros
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="bg-white rounded-3xl shadow-soft overflow-hidden border border-border/50">
             <table className="w-full text-left">
