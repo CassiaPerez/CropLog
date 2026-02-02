@@ -1,74 +1,110 @@
-import { Invoice, Product } from '../types';
+import { Invoice } from '../types';
 
-interface ErpItem {
-  sku: string;
-  name: string;
-  qty: number;
-  unit_measure: string;
-  weight_kg: number;
+interface ErpApiItem {
+  id_transacao: number;
+  cod_empresa: number;
+  id: string;
+  data_dcto: string;
+  data: string;
+  especie_dcto: string;
+  nr_docto: number;
+  nro_pedido: string;
+  dt_pedido: string;
+  es: string;
+  w_tp_trans: string;
+  oper_estoque: string;
+  w_id_pessoa_filial: number;
+  cod_pessoa_filial: number;
+  nome_pessoa: string;
+  cidade_pessoa: string;
+  uf_pessoa: string;
+  cpf_cnpj: string;
+  id_municipio: number;
+  w_id_vendedor: number;
+  cod_item: string;
+  unidade: string;
+  descricao: string;
+  w_id_produto: number;
+  cfop: string;
+  quantidade: number;
+  valor_liquido: number;
+  vl_unitario: number;
+  moeda: string;
+  frete: number;
+  bonificado: string;
+  indice: number;
+  cod_pagamento: string;
+  fator_conv: number;
+  und_alt: string;
+  quantidade_kgl: number;
 }
 
-interface ErpInvoiceResponse {
-  invoice_number: string;
-  customer: {
-    name: string;
-    city: string;
-  };
-  issued_at: string;
-  total_amount: number;
-  total_gross_weight: number;
-  items: ErpItem[];
+interface ErpApiResponse {
+  relatorio: string;
+  total: number;
+  page: number;
+  limit: number;
+  data: ErpApiItem[];
 }
 
-/**
- * Service to fetch invoices from an external ERP API.
- * Expected Endpoint: GET /invoices?status=ready_for_shipping
- */
-export const fetchErpInvoices = async (baseUrl: string, token: string): Promise<Invoice[]> => {
+export const fetchErpInvoices = async (baseUrl: string, apiKey: string): Promise<Invoice[]> => {
   if (!baseUrl) throw new Error("URL da API não configurada.");
 
-  // Remove trailing slash if present to avoid double slashes
-  const cleanUrl = baseUrl.replace(/\/$/, '');
-  
   try {
-    const response = await fetch(`${cleanUrl}/invoices?status=ready_for_shipping`, {
+    const response = await fetch(baseUrl, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       }
     });
 
     if (!response.ok) {
-        if (response.status === 401) throw new Error("Não autorizado (401). Verifique o Token.");
+        if (response.status === 401) throw new Error("Não autorizado (401). Verifique a API Key.");
         if (response.status === 404) throw new Error("Endpoint não encontrado (404).");
         throw new Error(`Erro na API: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    
-    // Map External ERP structure to Internal App Structure
-    // Assuming the API returns { data: [...] } or just [...]
-    const payload = Array.isArray(data) ? data : (data.data || []);
+    const apiResponse: ErpApiResponse = await response.json();
 
-    return payload.map((inv: ErpInvoiceResponse, index: number) => ({
-      id: `ext-${inv.invoice_number}`,
-      number: inv.invoice_number,
-      customerName: inv.customer.name,
-      customerCity: inv.customer.city,
-      issueDate: inv.issued_at,
-      totalValue: inv.total_amount,
-      totalWeight: inv.total_gross_weight,
-      isAssigned: false, // New invoices from ERP are usually unassigned
-      items: inv.items.map((item: ErpItem) => ({
-        sku: item.sku,
-        description: item.name,
-        quantity: item.qty,
-        unit: item.unit_measure,
-        weightKg: item.weight_kg,
+    const invoicesMap = new Map<number, Invoice>();
+
+    apiResponse.data.forEach((item: ErpApiItem) => {
+      const invoiceId = item.nr_docto;
+
+      if (!invoicesMap.has(invoiceId)) {
+        invoicesMap.set(invoiceId, {
+          id: `nf-${item.cod_empresa}-${invoiceId}`,
+          number: `${invoiceId}`,
+          customerName: item.nome_pessoa,
+          customerCity: `${item.cidade_pessoa} - ${item.uf_pessoa}`,
+          issueDate: item.data_dcto.split('T')[0],
+          totalValue: 0,
+          totalWeight: 0,
+          isAssigned: false,
+          items: []
+        });
+      }
+
+      const invoice = invoicesMap.get(invoiceId)!;
+
+      invoice.items.push({
+        sku: item.cod_item,
+        description: item.descricao,
+        quantity: item.quantidade,
+        unit: item.unidade,
+        weightKg: item.quantidade_kgl,
         quantityPicked: 0
-      }))
+      });
+
+      invoice.totalValue += item.valor_liquido;
+      invoice.totalWeight += item.quantidade_kgl;
+    });
+
+    return Array.from(invoicesMap.values()).map(inv => ({
+      ...inv,
+      totalValue: parseFloat(inv.totalValue.toFixed(2)),
+      totalWeight: parseFloat(inv.totalWeight.toFixed(2))
     }));
 
   } catch (error) {

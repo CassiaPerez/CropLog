@@ -38,8 +38,8 @@ function App() {
 
   // Settings State
   const [apiConfig, setApiConfig] = useState({
-      baseUrl: 'https://api.erp-corporate.com/v1',
-      token: '',
+      baseUrl: 'https://arabella-pulverable-davon.ngrok-free.dev/api/Faturamento_Backlog_Wonder?nome_fixo=Faturamento_Backlog_Wonder&page=1&limit=1000&format=json&api_key=a4d8c7f12e3b4c9a9f6e9e2a1b4d7c8f2a3e6d1f8b9c0a2e5f7a8d9c3e4b',
+      token: 'a4d8c7f12e3b4c9a9f6e9e2a1b4d7c8f2a3e6d1f8b9c0a2e5f7a8d9c3e4b',
       isActive: false
   });
   const [isSyncing, setIsSyncing] = useState(false);
@@ -158,8 +158,8 @@ function App() {
   // --- API Handlers ---
 
   const handleSyncErp = async () => {
-      if (!apiConfig.baseUrl || !apiConfig.token) {
-          alert("Configure a URL e o Token da API nas configurações.");
+      if (!apiConfig.baseUrl) {
+          alert("Configure a URL da API nas configurações.");
           setCurrentView('SETTINGS');
           return;
       }
@@ -702,29 +702,29 @@ function App() {
 
                      <div className="space-y-6">
                          <div className="space-y-2">
-                             <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">URL Base da API</label>
+                             <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">URL da API ERP</label>
                              <div className="relative">
-                                 <input 
+                                 <input
                                     value={apiConfig.baseUrl}
                                     onChange={e => setApiConfig({...apiConfig, baseUrl: e.target.value})}
-                                    type="text" 
+                                    type="text"
                                     className="w-full pl-14 pr-4 py-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium outline-none transition-all"
-                                    placeholder="https://api.erp.com/v1"
+                                    placeholder="https://api.erp.com/api/Faturamento_Backlog_Wonder?..."
                                  />
                                  <Globe className="absolute left-5 top-1/2 -translate-y-1/2 text-text-light" size={24} />
                              </div>
-                             <p className="text-sm text-text-light pl-2">Endpoint para busca de notas fiscais (GET /invoices).</p>
+                             <p className="text-sm text-text-light pl-2">URL completa da API para buscar notas fiscais do ERP.</p>
                          </div>
 
                          <div className="space-y-2">
-                             <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">Token de Acesso (Bearer)</label>
+                             <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">API Key</label>
                              <div className="relative">
-                                 <input 
+                                 <input
                                     value={apiConfig.token}
                                     onChange={e => setApiConfig({...apiConfig, token: e.target.value})}
-                                    type="password" 
+                                    type="password"
                                     className="w-full pl-14 pr-4 py-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium outline-none transition-all"
-                                    placeholder="eyJh..."
+                                    placeholder="a4d8c7f12e3b4c9a9f6e9e2a1b4d7c8f..."
                                  />
                                  <Key className="absolute left-5 top-1/2 -translate-y-1/2 text-text-light" size={24} />
                              </div>
