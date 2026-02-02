@@ -82,6 +82,7 @@ export const fetchErpInvoices = async (baseUrl: string, apiKey: string): Promise
           customerName: item.nome_pessoa,
           customerCity: `${item.cidade_pessoa} - ${item.uf_pessoa}`,
           issueDate: item.data_dcto.split('T')[0],
+          documentDate: item.data_dcto.split('T')[0],
           totalValue: 0,
           totalWeight: 0,
           isAssigned: false,

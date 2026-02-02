@@ -20,7 +20,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({ invoice, onClose }) 
              </div>
              <div>
                  <h2 className="text-xl font-bold text-[#0e121b]">Itens da Nota</h2>
-                 <p className="text-base text-gray-500 font-medium">NF: {invoice.number}</p>
+                 <p className="text-base text-gray-500 font-medium">NF: {invoice.number} • Data Doc: {new Date(invoice.documentDate).toLocaleDateString()}</p>
              </div>
           </div>
           <button 

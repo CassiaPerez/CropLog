@@ -34,6 +34,7 @@ export interface Invoice {
   customerName: string;
   customerCity: string;
   issueDate: string;
+  documentDate: string;
   totalValue: number;
   totalWeight: number;
   items: Product[];

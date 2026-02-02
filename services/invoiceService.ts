@@ -22,6 +22,7 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
             customer_name: invoice.customerName,
             customer_city: invoice.customerCity,
             issue_date: invoice.issueDate,
+            document_date: invoice.documentDate,
             total_value: invoice.totalValue,
             total_weight: invoice.totalWeight,
             updated_at: new Date().toISOString()
@@ -69,6 +70,7 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
             customer_name: invoice.customerName,
             customer_city: invoice.customerCity,
             issue_date: invoice.issueDate,
+            document_date: invoice.documentDate,
             total_value: invoice.totalValue,
             total_weight: invoice.totalWeight,
             is_assigned: invoice.isAssigned || false
@@ -154,6 +156,7 @@ export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
         customerName: invoiceData.customer_name,
         customerCity: invoiceData.customer_city,
         issueDate: invoiceData.issue_date,
+        documentDate: invoiceData.document_date || invoiceData.issue_date,
         totalValue: Number(invoiceData.total_value),
         totalWeight: Number(invoiceData.total_weight),
         items: items,

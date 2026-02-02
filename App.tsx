@@ -65,9 +65,23 @@ function App() {
     loadInvoices();
     const savedConfig = localStorage.getItem('erp_config');
     if (savedConfig) {
-        setApiConfig(JSON.parse(savedConfig));
+        const config = JSON.parse(savedConfig);
+        setApiConfig(config);
+        if (config.baseUrl && config.isActive) {
+          performAutoSync(config.baseUrl, config.token);
+        }
     }
   }, []);
+
+  useEffect(() => {
+    if (!apiConfig.baseUrl || !apiConfig.isActive) return;
+
+    const intervalId = setInterval(() => {
+      performAutoSync(apiConfig.baseUrl, apiConfig.token);
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [apiConfig.baseUrl, apiConfig.token, apiConfig.isActive]);
 
   const fetchUsers = async () => {
     setIsUsersLoading(true);
@@ -93,6 +107,18 @@ function App() {
       }
     } catch (error) {
       console.error('Erro ao carregar notas do banco:', error);
+    }
+  };
+
+  const performAutoSync = async (baseUrl: string, token: string) => {
+    try {
+      const newInvoices = await fetchErpInvoices(baseUrl, token);
+      await saveInvoicesToDatabase(newInvoices);
+      const updatedInvoices = await loadInvoicesFromDatabase();
+      setInvoices(updatedInvoices);
+      console.log('Sincronização automática concluída:', new Date().toLocaleTimeString());
+    } catch (error) {
+      console.error('Erro na sincronização automática:', error);
     }
   };
 
@@ -1481,7 +1507,7 @@ function App() {
                                     </td>
                                     <td className="p-6">
                                         <p className="font-bold text-xl text-text-main">{inv.number}</p>
-                                        <p className="text-sm text-text-light">{new Date(inv.issueDate).toLocaleDateString()}</p>
+                                        <p className="text-sm text-text-light">Data Doc: {new Date(inv.documentDate).toLocaleDateString()}</p>
                                     </td>
                                     <td className="p-6 text-lg font-medium text-text-secondary">{inv.customerName}</td>
                                     <td className="p-6 text-center text-xl font-bold text-text-main">{inv.items.reduce((acc, i) => acc + i.quantity, 0)}</td>
