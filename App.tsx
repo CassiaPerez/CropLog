@@ -6,6 +6,7 @@ import { Invoice, LoadMap, ViewState, LoadStatus, User, UserRole } from './types
 import { createLoadMap, getStatusColor } from './services/loadService';
 import { fetchErpInvoices } from './services/erpService';
 import { supabase } from './services/supabase';
+import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus } from './services/invoiceService';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
@@ -61,7 +62,7 @@ function App() {
 
   useEffect(() => {
     fetchUsers();
-    // Load config from local storage if available
+    loadInvoices();
     const savedConfig = localStorage.getItem('erp_config');
     if (savedConfig) {
         setApiConfig(JSON.parse(savedConfig));
@@ -73,7 +74,6 @@ function App() {
     try {
       const { data, error } = await supabase.from('app_users').select('*').order('name');
       if (error) {
-        // Fallback to mock if DB fails (or table doesn't exist yet)
         if (users.length === 0) setUsers(MOCK_USERS);
       } else {
         setUsers(data as User[]);
@@ -82,6 +82,17 @@ function App() {
       if (users.length === 0) setUsers(MOCK_USERS);
     } finally {
       setIsUsersLoading(false);
+    }
+  };
+
+  const loadInvoices = async () => {
+    try {
+      const loadedInvoices = await loadInvoicesFromDatabase();
+      if (loadedInvoices.length > 0) {
+        setInvoices(loadedInvoices);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar notas do banco:', error);
     }
   };
 
@@ -176,21 +187,12 @@ function App() {
 
       try {
           const newInvoices = await fetchErpInvoices(apiConfig.baseUrl, apiConfig.token);
-          
-          // Merge logic: Add only new IDs
-          setInvoices(prev => {
-              const existingIds = new Set(prev.map(i => i.id));
-              const filteredNew = newInvoices.filter(i => !existingIds.has(i.id));
-              
-              if (filteredNew.length === 0) {
-                  // If we are in "Active Mode", maybe we replace the list? 
-                  // For safety, let's append/update.
-                  return prev; 
-              }
-              return [...filteredNew, ...prev];
-          });
-          
-          // alert(`Sincronização concluída! ${newInvoices.length} notas obtidas.`);
+
+          await saveInvoicesToDatabase(newInvoices);
+
+          const updatedInvoices = await loadInvoicesFromDatabase();
+          setInvoices(updatedInvoices);
+
       } catch (error: any) {
           setSyncError(error.message);
       } finally {
@@ -634,12 +636,19 @@ function App() {
       setSelectedInvoiceIds(next);
     };
 
-    const handleCreateMap = () => {
+    const handleCreateMap = async () => {
       if (selectedInvoiceIds.size === 0) return;
       const selectedInvs = invoices.filter(inv => selectedInvoiceIds.has(inv.id));
       const newMap = createLoadMap(selectedInvs);
       setLoadMaps(prev => [newMap, ...prev]);
       setInvoices(prev => prev.map(inv => selectedInvoiceIds.has(inv.id) ? { ...inv, isAssigned: true } : inv));
+
+      try {
+        await updateInvoiceAssignedStatus(Array.from(selectedInvoiceIds), true);
+      } catch (error) {
+        console.error('Erro ao atualizar status das notas:', error);
+      }
+
       setSelectedInvoiceIds(new Set());
       setSelectedMapId(newMap.id);
       setCurrentView('MAP_DETAIL');
