@@ -50,13 +50,16 @@ interface ErpApiResponse {
 export const fetchErpInvoices = async (baseUrl: string, apiKey: string): Promise<Invoice[]> => {
   if (!baseUrl) throw new Error("URL da API não configurada.");
 
+  const supabaseUrl = import.meta.env.REACT_APP_SUPABASE_URL || 'https://elxtwxyuukmiiksiqmpr.supabase.co';
+  const edgeFunctionUrl = `${supabaseUrl}/functions/v1/erp-proxy`;
+
   try {
-    const response = await fetch(baseUrl, {
-      method: 'GET',
+    const response = await fetch(edgeFunctionUrl, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
+      },
+      body: JSON.stringify({ url: baseUrl })
     });
 
     if (!response.ok) {
