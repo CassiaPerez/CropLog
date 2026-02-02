@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Layout } from './components/Layout';
 import { ProductModal } from './components/ProductModal';
-import { MOCK_INVOICES, MOCK_LOAD_MAPS, CARRIER_LIST, MOCK_USERS } from './constants';
+import { CARRIER_LIST } from './constants';
 import { Invoice, LoadMap, ViewState, LoadStatus, User, UserRole } from './types';
 import { createLoadMap, getStatusColor } from './services/loadService';
 import { fetchErpInvoices } from './services/erpService';
@@ -26,8 +26,8 @@ function App() {
   const [currentView, setCurrentView] = useState<ViewState>('LOGIN');
   
   // Data State
-  const [invoices, setInvoices] = useState<Invoice[]>(MOCK_INVOICES);
-  const [loadMaps, setLoadMaps] = useState<LoadMap[]>(MOCK_LOAD_MAPS);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loadMaps, setLoadMaps] = useState<LoadMap[]>([]);
   
   // User Management State
   const [users, setUsers] = useState<User[]>([]);
@@ -88,12 +88,12 @@ function App() {
     try {
       const { data, error } = await supabase.from('app_users').select('*').order('name');
       if (error) {
-        if (users.length === 0) setUsers(MOCK_USERS);
+        console.error('Erro ao carregar usuários:', error);
       } else {
         setUsers(data as User[]);
       }
     } catch (err) {
-      if (users.length === 0) setUsers(MOCK_USERS);
+      console.error('Erro ao buscar usuários:', err);
     } finally {
       setIsUsersLoading(false);
     }
@@ -116,7 +116,6 @@ function App() {
       await saveInvoicesToDatabase(newInvoices);
       const updatedInvoices = await loadInvoicesFromDatabase();
       setInvoices(updatedInvoices);
-      console.log('Sincronização automática concluída:', new Date().toLocaleTimeString());
     } catch (error) {
       console.error('Erro na sincronização automática:', error);
     }
@@ -1014,7 +1013,7 @@ function App() {
           const logoBase64 = await getLogoAsBase64();
           doc.addImage(logoBase64, 'PNG', 14, 10, 40, 12);
         } catch (error) {
-          console.warn('Failed to load logo:', error);
+          // Logo não disponível
         }
 
         // Header
@@ -1251,7 +1250,7 @@ function App() {
           const logoBase64 = await getLogoAsBase64();
           doc.addImage(logoBase64, 'PNG', 14, 8, 40, 12);
         } catch (error) {
-          console.warn('Failed to load logo:', error);
+          // Logo não disponível
         }
 
         doc.setFontSize(22);
