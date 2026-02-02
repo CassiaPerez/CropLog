@@ -706,7 +706,7 @@ function App() {
 
         doc.setFontSize(10);
         doc.setFont(undefined, 'normal');
-        doc.text(`Cidade: ${inv.customerCity}`, 14, yPosition);
+        doc.text(`Data NF: ${new Date(inv.documentDate).toLocaleDateString('pt-BR')} | Cidade: ${inv.customerCity}`, 14, yPosition);
         yPosition += 5;
         doc.text(`Valor Total: R$ ${inv.totalValue.toFixed(2)} | Peso Total: ${inv.totalWeight.toFixed(2)} kg`, 14, yPosition);
         yPosition += 8;
@@ -861,6 +861,7 @@ function App() {
                     <tr>
                         <th className="p-6 w-16 text-center"><input type="checkbox" disabled className="size-6 rounded-lg"/></th>
                         <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Número</th>
+                        <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Data NF</th>
                         <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Cliente</th>
                         <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Cidade</th>
                         <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Peso</th>
@@ -870,7 +871,7 @@ function App() {
                 </thead>
                 <tbody className="divide-y divide-border">
                     {availableInvoices.length === 0 ? (
-                        <tr><td colSpan={7} className="p-10 text-center text-text-light text-xl">Nenhuma nota disponível.</td></tr>
+                        <tr><td colSpan={8} className="p-10 text-center text-text-light text-xl">Nenhuma nota disponível.</td></tr>
                     ) : availableInvoices.map(inv => (
                         <tr key={inv.id} className={`hover:bg-slate-50 transition-colors cursor-pointer ${selectedInvoiceIds.has(inv.id) ? 'bg-primary/5' : ''}`} onClick={() => toggleInvoice(inv.id)}>
                             <td className="p-6 text-center">
@@ -879,6 +880,9 @@ function App() {
                                 </div>
                             </td>
                             <td className="p-6 font-bold text-text-main text-lg">{inv.number}</td>
+                            <td className="p-6 text-text-secondary text-base">
+                                {new Date(inv.documentDate).toLocaleDateString('pt-BR')}
+                            </td>
                             <td className="p-6 text-text-secondary text-lg font-medium">{inv.customerName}</td>
                             <td className="p-6 text-text-secondary text-lg">{inv.customerCity}</td>
                             <td className="p-6 font-mono font-bold text-text-main text-lg">{inv.totalWeight.toFixed(2)} kg</td>
@@ -1264,6 +1268,7 @@ function App() {
 
         const tableData = map.invoices.map(inv => [
             inv.number,
+            new Date(inv.documentDate).toLocaleDateString('pt-BR'),
             inv.customerName,
             inv.customerCity,
             `${inv.totalWeight.toFixed(2)} kg`,
@@ -1273,7 +1278,7 @@ function App() {
 
         autoTable(doc, {
             startY: 56,
-            head: [['Nota Fiscal', 'Cliente', 'Cidade', 'Peso', 'Volumes', 'Valor']],
+            head: [['NF', 'Data NF', 'Cliente', 'Cidade', 'Peso', 'Vol.', 'Valor']],
             body: tableData,
             theme: 'grid',
             headStyles: { fillColor: [15, 23, 42] },
@@ -1400,6 +1405,7 @@ function App() {
                         <thead className="border-b border-border">
                             <tr>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">NF</th>
+                                <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Data NF</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Cliente</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase text-right">Valor</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase text-right">Peso</th>
@@ -1409,6 +1415,9 @@ function App() {
                             {map.invoices.map(inv => (
                                 <tr key={inv.id}>
                                     <td className="py-6 px-4 text-xl font-bold text-text-main">{inv.number}</td>
+                                    <td className="py-6 px-4 text-base text-text-secondary">
+                                        {new Date(inv.documentDate).toLocaleDateString('pt-BR')}
+                                    </td>
                                     <td className="py-6 px-4 text-xl font-medium text-text-secondary">{inv.customerName}</td>
                                     <td className="py-6 px-4 text-xl font-mono font-bold text-text-main text-right">{formatCurrency(inv.totalValue)}</td>
                                     <td className="py-6 px-4 text-xl font-mono font-bold text-text-main text-right">{inv.totalWeight} kg</td>
