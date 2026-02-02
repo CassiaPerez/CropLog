@@ -5,32 +5,11 @@ interface LogoProps {
 }
 
 export const Logo: React.FC<LogoProps> = ({ className }) => {
-  // SVG inline baseado no arquivo assets/images/logo.svg enviado.
-  // Usamos 'currentColor' no lugar de cores fixas para permitir que o Tailwind controle a cor (text-primary, etc).
   return (
-    <svg 
-      width="400" 
-      height="120" 
-      viewBox="0 0 400 120" 
-      fill="none" 
-      xmlns="http://www.w3.org/2000/svg" 
+    <img
+      src="/assets/images/gcf_logo_05.png"
+      alt="GCF Logística"
       className={className}
-      aria-label="GCF Logística"
-    >
-      <g id="icon" stroke="currentColor" strokeWidth="6" strokeLinecap="round">
-        <path d="M45.5,100 C25,90 10,70 10,50 C10,30 25,10 45.5,5" />
-        <path d="M55,95 C38,85 22,70 22,50 C22,35 32,20 50,15" />
-        <path d="M65,90 C50,82 35,70 35,50 C35,40 42,28 55,25" />
-        <path d="M75,85 C62,78 48,68 48,50 C48,42 52,35 60,32" />
-        <path d="M85,80 C75,75 62,65 62,50 C62,45 65,40 70,38" />
-        <path d="M20,65 L30,68" />
-        <path d="M15,55 L25,58" />
-      </g>
-      <g id="text" fill="currentColor" transform="translate(110, 20)">
-        <path d="M60,40 L60,50 L85,50 L85,80 C80,85 70,90 55,90 C30,90 15,70 15,45 C15,20 30,0 55,0 C70,0 80,5 85,12 L75,22 C70,18 65,15 55,15 C40,15 32,30 32,45 C32,60 40,75 55,75 C62,75 68,72 70,68 L70,65 L60,65 L60,40 Z" />
-        <path d="M150,12 L140,22 C135,18 128,15 118,15 C103,15 95,30 95,45 C95,60 103,75 118,75 C128,75 135,72 140,68 L150,78 C145,85 135,90 120,90 C95,90 80,70 80,45 C80,20 95,0 120,0 C135,0 145,5 150,12 Z" />
-        <path d="M170,0 L215,0 L215,15 L185,15 L185,35 L210,35 L210,50 L185,50 L185,90 L170,90 L170,0 Z" />
-      </g>
-    </svg>
+    />
   );
 };

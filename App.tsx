@@ -114,6 +114,27 @@ function App() {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
+  const getLogoAsBase64 = (): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        } else {
+          reject(new Error('Failed to get canvas context'));
+        }
+      };
+      img.onerror = reject;
+      img.src = '/assets/images/gcf_logo_05.png';
+    });
+  };
+
   const getLoadProgress = (status: LoadStatus): number => {
       switch (status) {
           case LoadStatus.PLANNING: return 10;
@@ -329,9 +350,7 @@ function App() {
                 <div className="hidden md:flex md:w-5/12 bg-primary p-16 flex-col justify-between relative overflow-hidden text-white">
                     <div className="relative z-10">
                         <div className="flex items-center gap-3 mb-16">
-                             <div className="bg-white/5 p-2 rounded-lg backdrop-blur-md border border-white/10">
-                                <span className="text-4xl font-black tracking-tight text-white">GCF</span>
-                             </div>
+                             <img src="/assets/images/gcf_logo_05.png" alt="GCF Logística" className="h-16 w-auto brightness-0 invert" />
                         </div>
                         
                         <h1 className="text-6xl font-extrabold mb-8 leading-tight tracking-tight">
@@ -362,6 +381,9 @@ function App() {
                 <div className="w-full md:w-7/12 p-12 md:p-24 flex flex-col justify-center bg-white">
                     <div className="max-w-md mx-auto w-full">
                         <div className="mb-12">
+                            <div className="mb-8 md:hidden flex justify-center">
+                                <img src="/assets/images/gcf_logo_05.png" alt="GCF Logística" className="h-12 w-auto" />
+                            </div>
                             <h2 className="text-4xl font-black text-text-main mb-3">Bem-vindo</h2>
                             <p className="text-xl text-text-secondary">Insira suas credenciais para acessar.</p>
                         </div>
@@ -769,18 +791,26 @@ function App() {
           setCurrentView('MAP_DETAIL');
       };
 
-      const handleDownloadReport = () => {
+      const handleDownloadReport = async () => {
         const doc = new jsPDF();
-        
+
+        // Add Logo
+        try {
+          const logoBase64 = await getLogoAsBase64();
+          doc.addImage(logoBase64, 'PNG', 14, 10, 40, 12);
+        } catch (error) {
+          console.warn('Failed to load logo:', error);
+        }
+
         // Header
         doc.setFontSize(22);
         doc.setTextColor(15, 23, 42); // Primary color
-        doc.text('Relatório Geral de Cargas', 14, 20);
-        
+        doc.text('Relatório Geral de Cargas', 60, 18);
+
         doc.setFontSize(10);
         doc.setTextColor(100);
-        doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 28);
-        
+        doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 30);
+
         // Table Data
         const tableData = loadMaps.map(m => [
             m.code,
@@ -793,13 +823,13 @@ function App() {
         ]);
 
         autoTable(doc, {
-            startY: 35,
+            startY: 38,
             head: [['Código', 'Status', 'Transportadora', 'Rota', 'Qtd Notas', 'Peso Total', 'Valor Total']],
             body: tableData,
             headStyles: { fillColor: [15, 23, 42], fontSize: 10, fontStyle: 'bold' },
             bodyStyles: { fontSize: 9 },
             alternateRowStyles: { fillColor: [241, 245, 249] },
-            margin: { top: 35 },
+            margin: { top: 38 },
         });
 
         doc.save(`relatorio-cargas-${new Date().toISOString().split('T')[0]}.pdf`);
@@ -998,18 +1028,26 @@ function App() {
         setCurrentView('LOAD_MAPS');
     };
     
-    const generateManifestPDF = () => {
+    const generateManifestPDF = async () => {
         const doc = new jsPDF();
-        
+
+        // Add Logo
+        try {
+          const logoBase64 = await getLogoAsBase64();
+          doc.addImage(logoBase64, 'PNG', 14, 8, 40, 12);
+        } catch (error) {
+          console.warn('Failed to load logo:', error);
+        }
+
         doc.setFontSize(22);
-        doc.text(`Manifesto de Carga: ${map.code}`, 14, 20);
-        
+        doc.text(`Manifesto de Carga: ${map.code}`, 14, 28);
+
         doc.setFontSize(10);
-        doc.text(`Transportadora: ${carrierName}`, 14, 30);
-        doc.text(`Placa: ${vehiclePlate}`, 14, 35);
-        doc.text(`Rota: ${route}`, 14, 40);
-        doc.text(`Data: ${new Date().toLocaleDateString()}`, 150, 30);
-        
+        doc.text(`Transportadora: ${carrierName}`, 14, 38);
+        doc.text(`Placa: ${vehiclePlate}`, 14, 43);
+        doc.text(`Rota: ${route}`, 14, 48);
+        doc.text(`Data: ${new Date().toLocaleDateString()}`, 150, 38);
+
         const tableData = map.invoices.map(inv => [
             inv.number,
             inv.customerName,
@@ -1020,7 +1058,7 @@ function App() {
         ]);
 
         autoTable(doc, {
-            startY: 50,
+            startY: 56,
             head: [['Nota Fiscal', 'Cliente', 'Cidade', 'Peso', 'Volumes', 'Valor']],
             body: tableData,
             theme: 'grid',
