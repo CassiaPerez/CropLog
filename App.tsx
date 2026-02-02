@@ -47,10 +47,9 @@ function App() {
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // Filter State
-  const [filterCustomer, setFilterCustomer] = useState('');
-  const [filterCity, setFilterCity] = useState('');
-  const [filterMinValue, setFilterMinValue] = useState('');
-  const [filterMaxValue, setFilterMaxValue] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
   // Selection State
@@ -625,34 +624,36 @@ function App() {
     const availableInvoices = useMemo(() => {
       let filtered = invoices.filter(inv => !inv.isAssigned);
 
-      if (filterCustomer) {
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
         filtered = filtered.filter(inv =>
-          inv.customerName.toLowerCase().includes(filterCustomer.toLowerCase())
+          inv.number.toLowerCase().includes(term) ||
+          inv.customerName.toLowerCase().includes(term) ||
+          inv.customerCity.toLowerCase().includes(term)
         );
       }
 
-      if (filterCity) {
-        filtered = filtered.filter(inv =>
-          inv.customerCity.toLowerCase().includes(filterCity.toLowerCase())
-        );
+      if (filterStartDate) {
+        const startDate = new Date(filterStartDate);
+        startDate.setHours(0, 0, 0, 0);
+        filtered = filtered.filter(inv => {
+          const invDate = new Date(inv.documentDate);
+          invDate.setHours(0, 0, 0, 0);
+          return invDate >= startDate;
+        });
       }
 
-      if (filterMinValue) {
-        const min = parseFloat(filterMinValue);
-        if (!isNaN(min)) {
-          filtered = filtered.filter(inv => inv.totalValue >= min);
-        }
-      }
-
-      if (filterMaxValue) {
-        const max = parseFloat(filterMaxValue);
-        if (!isNaN(max)) {
-          filtered = filtered.filter(inv => inv.totalValue <= max);
-        }
+      if (filterEndDate) {
+        const endDate = new Date(filterEndDate);
+        endDate.setHours(23, 59, 59, 999);
+        filtered = filtered.filter(inv => {
+          const invDate = new Date(inv.documentDate);
+          return invDate <= endDate;
+        });
       }
 
       return filtered;
-    }, [invoices, filterCustomer, filterCity, filterMinValue, filterMaxValue]);
+    }, [invoices, searchTerm, filterStartDate, filterEndDate]);
 
     const toggleInvoice = (id: string) => {
       const next = new Set(selectedInvoiceIds);
@@ -737,10 +738,9 @@ function App() {
     };
 
     const clearFilters = () => {
-      setFilterCustomer('');
-      setFilterCity('');
-      setFilterMinValue('');
-      setFilterMaxValue('');
+      setSearchTerm('');
+      setFilterStartDate('');
+      setFilterEndDate('');
     };
 
     return (
@@ -801,48 +801,42 @@ function App() {
           </div>
 
           {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-border">
-              <div>
-                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block">Cliente</label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border">
+              <div className="md:col-span-1">
+                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block flex items-center gap-2">
+                  <Search size={16} /> Pesquisar
+                </label>
                 <input
                   type="text"
-                  value={filterCustomer}
-                  onChange={(e) => setFilterCustomer(e.target.value)}
-                  placeholder="Nome do cliente"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="NF, Cliente ou Cidade..."
                   className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
                 />
               </div>
               <div>
-                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block">Cidade</label>
+                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block flex items-center gap-2">
+                  <Calendar size={16} /> Data Inicial
+                </label>
                 <input
-                  type="text"
-                  value={filterCity}
-                  onChange={(e) => setFilterCity(e.target.value)}
-                  placeholder="Cidade"
+                  type="date"
+                  value={filterStartDate}
+                  onChange={(e) => setFilterStartDate(e.target.value)}
                   className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
                 />
               </div>
               <div>
-                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block">Valor Mínimo</label>
+                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block flex items-center gap-2">
+                  <Calendar size={16} /> Data Final
+                </label>
                 <input
-                  type="number"
-                  value={filterMinValue}
-                  onChange={(e) => setFilterMinValue(e.target.value)}
-                  placeholder="0.00"
+                  type="date"
+                  value={filterEndDate}
+                  onChange={(e) => setFilterEndDate(e.target.value)}
                   className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
                 />
               </div>
-              <div>
-                <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block">Valor Máximo</label>
-                <input
-                  type="number"
-                  value={filterMaxValue}
-                  onChange={(e) => setFilterMaxValue(e.target.value)}
-                  placeholder="999999.99"
-                  className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
-                />
-              </div>
-              <div className="md:col-span-4 flex justify-end">
+              <div className="md:col-span-3 flex justify-end">
                 <button
                   onClick={clearFilters}
                   className="flex items-center gap-2 px-6 py-2 bg-slate-100 hover:bg-slate-200 text-text-secondary rounded-xl font-bold transition-all"
