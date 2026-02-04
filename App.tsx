@@ -100,10 +100,10 @@ function App() {
 
   const loadInvoices = async () => {
     try {
+      console.log('Carregando notas do banco de dados...');
       const loadedInvoices = await loadInvoicesFromDatabase();
-      if (loadedInvoices.length > 0) {
-        setInvoices(loadedInvoices);
-      }
+      console.log(`Carregadas ${loadedInvoices.length} notas do banco`);
+      setInvoices(loadedInvoices);
     } catch (error) {
       console.error('Erro ao carregar notas do banco:', error);
     }

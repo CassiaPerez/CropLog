@@ -3,6 +3,7 @@ import { Invoice, Product } from '../types';
 
 export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void> {
   try {
+    console.log(`Salvando ${invoices.length} notas no banco de dados...`);
     for (const invoice of invoices) {
       const { data: existingInvoice, error: checkError } = await supabase
         .from('invoices')
@@ -106,6 +107,7 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
         }
       }
     }
+    console.log('Todas as notas foram salvas com sucesso');
   } catch (error) {
     console.error('Erro ao salvar notas no banco:', error);
     throw error;
@@ -114,6 +116,7 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
 
 export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
   try {
+    console.log('Buscando notas no Supabase...');
     const { data: invoicesData, error: invoicesError } = await supabase
       .from('invoices')
       .select('*')
@@ -124,7 +127,10 @@ export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
       return [];
     }
 
+    console.log(`Encontradas ${invoicesData?.length || 0} notas no banco`);
+
     if (!invoicesData || invoicesData.length === 0) {
+      console.log('Nenhuma nota encontrada no banco');
       return [];
     }
 
@@ -164,6 +170,7 @@ export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
       });
     }
 
+    console.log(`Retornando ${invoicesWithItems.length} notas com itens`);
     return invoicesWithItems;
   } catch (error) {
     console.error('Erro ao carregar notas do banco:', error);
