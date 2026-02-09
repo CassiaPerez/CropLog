@@ -1,40 +1,56 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+// supabase/functions/erp-proxy/index.ts
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
+/**
+ * CORS “à prova de preflight”
+ * - Em DEV: "*" (origens mudam muito, ex. webcontainer)
+ * - Em PROD: troque por seu domínio (ex.: https://intranet.grupocropfield.com.br)
+ */
 const corsHeaders: Record<string, string> = {
-  // Em DEV: "*" (origens mudam muito). Em PROD: troque por seu domínio.
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, accept, origin",
   "Access-Control-Max-Age": "86400",
-  // Ajuda cache/proxy a não “misturar” origens
   Vary: "Origin",
 };
 
-interface RequestBody {
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+
+interface ProxyRequestBody {
   url: string;
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: HttpMethod;
   headers?: Record<string, string>;
   body?: unknown;
 }
 
-Deno.serve(async (req: Request) => {
-  // ✅ Preflight CORS
+function isHttpUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+serve(async (req) => {
+  // ✅ Preflight (CORS)
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  // (Opcional) bloqueie métodos indesejados na sua function
+  // Aceitamos somente POST para o proxy (mais seguro)
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+    return new Response(JSON.stringify({ error: "Use POST" }), {
       status: 405,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
   try {
-    const payload = (await req.json().catch(() => ({}))) as Partial<RequestBody>;
-    const url = payload.url?.trim();
+    const payload = (await req.json().catch(() => ({}))) as Partial<ProxyRequestBody>;
+    const url = (payload.url ?? "").trim();
+    const method: HttpMethod = (payload.method ?? "GET") as HttpMethod;
 
     if (!url) {
       return new Response(JSON.stringify({ error: "url is required" }), {
@@ -43,39 +59,26 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ✅ Segurança mínima: evita SSRF básico (recomendo manter)
-    // Permite apenas http/https
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      return new Response(JSON.stringify({ error: "Invalid URL" }), {
+    // ✅ Segurança básica: só http/https
+    if (!isHttpUrl(url)) {
+      return new Response(JSON.stringify({ error: "Invalid URL (only http/https)" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      return new Response(JSON.stringify({ error: "Only http/https allowed" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const method = payload.method ?? "GET";
-
-    // Headers base para a API alvo
+    // Headers base enviados para a API de destino
     const forwardHeaders: Record<string, string> = {
       Accept: "application/json",
-      // Se você usa ngrok para o ERP:
+      // útil quando o seu ERP está atrás de ngrok
       "ngrok-skip-browser-warning": "true",
       ...(payload.headers ?? {}),
     };
 
-    // Se houver body, envie como JSON (para POST/PUT)
     const hasBody = payload.body !== undefined && payload.body !== null;
+
     if (hasBody) {
-      forwardHeaders["Content-Type"] = "application/json";
+      forwardHeaders["Content-Type"] = forwardHeaders["Content-Type"] ?? "application/json";
     }
 
     const upstream = await fetch(url, {
@@ -86,7 +89,7 @@ Deno.serve(async (req: Request) => {
 
     const text = await upstream.text();
 
-    // Se upstream falhar, devolve erro com detalhes (limitado)
+    // Se upstream falhar, devolve erro com detalhes para debug
     if (!upstream.ok) {
       return new Response(
         JSON.stringify({
@@ -100,7 +103,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Tenta parsear JSON; se não for JSON, devolve como texto
+    // Tenta parsear JSON; se não for, devolve texto
     let data: unknown;
     try {
       data = JSON.parse(text);
@@ -112,10 +115,10 @@ Deno.serve(async (req: Request) => {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (error) {
+  } catch (err) {
     return new Response(
       JSON.stringify({
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: err instanceof Error ? err.message : String(err),
       }),
       {
         status: 500,
