@@ -7,6 +7,7 @@ import { createLoadMap, getStatusColor } from './services/loadService';
 import { fetchErpInvoices } from './services/erpService';
 import { supabase } from './services/supabase';
 import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus } from './services/invoiceService';
+import { saveLoadMapToDatabase, loadLoadMapsFromDatabase, deleteLoadMapFromDatabase } from './services/loadMapService';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
@@ -62,6 +63,7 @@ function App() {
   useEffect(() => {
     fetchUsers();
     loadInvoices();
+    loadLoadMaps();
     const savedConfig = localStorage.getItem('erp_config');
     if (savedConfig) {
         const config = JSON.parse(savedConfig);
@@ -106,6 +108,17 @@ function App() {
       setInvoices(loadedInvoices);
     } catch (error) {
       console.error('Erro ao carregar notas do banco:', error);
+    }
+  };
+
+  const loadLoadMaps = async () => {
+    try {
+      console.log('Carregando mapas de carga do banco de dados...');
+      const loadedMaps = await loadLoadMapsFromDatabase();
+      console.log(`Carregados ${loadedMaps.length} mapas do banco`);
+      setLoadMaps(loadedMaps);
+    } catch (error) {
+      console.error('Erro ao carregar mapas do banco:', error);
     }
   };
 
@@ -309,7 +322,7 @@ function App() {
 
   // --- Logic Handlers ---
 
-  const addTimelineEvent = (mapId: string, status: LoadStatus, description: string) => {
+  const addTimelineEvent = async (mapId: string, status: LoadStatus, description: string) => {
     // Fallback if currentUser is lost in state but session is arguably active (simplified for this demo)
     const userId = currentUser ? currentUser.id : 'system';
     const userName = currentUser ? currentUser.name : 'Sistema';
@@ -323,16 +336,28 @@ function App() {
         userName
     };
 
+    let updatedMap: LoadMap | null = null;
+
     setLoadMaps(prev => prev.map(m => {
         if (m.id === mapId) {
-            return {
+            updatedMap = {
                 ...m,
                 status,
                 timeline: [...m.timeline, newEvent]
             };
+            return updatedMap;
         }
         return m;
     }));
+
+    // Salvar no banco de dados
+    if (updatedMap) {
+      try {
+        await saveLoadMapToDatabase(updatedMap);
+      } catch (error) {
+        console.error('Erro ao salvar timeline no banco:', error);
+      }
+    }
   };
 
   // --- Views ---
@@ -671,6 +696,7 @@ function App() {
 
       try {
         await updateInvoiceAssignedStatus(Array.from(selectedInvoiceIds), true);
+        await saveLoadMapToDatabase(newMap);
       } catch (error) {
         console.error('Erro ao atualizar status das notas:', error);
       }
@@ -1222,21 +1248,37 @@ function App() {
         setTimeout(() => setShowCarrierSuggestions(false), 200);
     };
     
-    const saveChanges = () => {
-        setLoadMaps(prev => prev.map(m => m.id === map.id ? { 
-            ...m, 
-            logisticsNotes: notes, 
-            carrierName, 
-            route, 
-            sourceCity,
-            vehiclePlate, 
-            googleMapsLink 
-        } : m));
-        alert('Salvo!');
+    const saveChanges = async () => {
+        let updatedMap: LoadMap | null = null;
+
+        setLoadMaps(prev => prev.map(m => {
+          if (m.id === map.id) {
+            updatedMap = {
+              ...m,
+              logisticsNotes: notes,
+              carrierName,
+              route,
+              sourceCity,
+              vehiclePlate,
+              googleMapsLink
+            };
+            return updatedMap;
+          }
+          return m;
+        }));
+
+        if (updatedMap) {
+          try {
+            await saveLoadMapToDatabase(updatedMap);
+            alert('Salvo!');
+          } catch (error) {
+            console.error('Erro ao salvar:', error);
+            alert('Erro ao salvar!');
+          }
+        }
     };
-    const releaseToSeparation = () => {
-        addTimelineEvent(map.id, LoadStatus.READY_FOR_SEPARATION, "Liberado para separação");
-        setLoadMaps(prev => prev.map(m => m.id === map.id ? { ...m, status: LoadStatus.READY_FOR_SEPARATION } : m));
+    const releaseToSeparation = async () => {
+        await addTimelineEvent(map.id, LoadStatus.READY_FOR_SEPARATION, "Liberado para separação");
         setCurrentView('LOAD_MAPS');
     };
     
@@ -1440,14 +1482,14 @@ function App() {
         setVerifiedInvoices(next);
     };
 
-    const finishSeparation = () => {
+    const finishSeparation = async () => {
         // Safe check for current user even if state was lost
         const userId = currentUser ? currentUser.id : 'system';
         const userName = currentUser ? currentUser.name : 'Sistema';
-        
+
         const total = map.invoices.length;
         const verified = verifiedInvoices.size;
-        
+
         if (verified < total) {
             if (!window.confirm(`Existem notas não conferidas (${total - verified}). Deseja finalizar com divergência?`)) {
                 return;
@@ -1455,9 +1497,8 @@ function App() {
         }
 
         const newStatus = verified === total ? LoadStatus.SEPARATED : LoadStatus.SEPARATED_WITH_DIVERGENCE;
-        
-        addTimelineEvent(map.id, newStatus, `Conferência finalizada. ${verified}/${total} notas conferidas.`);
-        setLoadMaps(prev => prev.map(m => m.id === map.id ? { ...m, status: newStatus } : m));
+
+        await addTimelineEvent(map.id, newStatus, `Conferência finalizada. ${verified}/${total} notas conferidas.`);
         setCurrentView('SEPARATION_LIST');
     };
 
@@ -1602,9 +1643,9 @@ function App() {
 
     const embedUrl = getEmbedUrl(map.googleMapsLink || '', map.route);
 
-    const handleStatusUpdate = (newStatus: LoadStatus, note: string) => {
+    const handleStatusUpdate = async (newStatus: LoadStatus, note: string) => {
         if(window.confirm(`Deseja alterar o status para: ${newStatus}?`)) {
-             addTimelineEvent(map.id, newStatus, note);
+             await addTimelineEvent(map.id, newStatus, note);
              // Note: addTimelineEvent handles state update, no need to setLoadMaps twice which caused race condition
         }
     };
