@@ -223,15 +223,30 @@ function App() {
       setSyncError(null);
 
       try {
+          console.log('🚀 Iniciando sincronização manual com ERP...');
+
           const newInvoices = await fetchErpInvoices(apiConfig.baseUrl, apiConfig.token);
+
+          if (newInvoices.length === 0) {
+              alert('Nenhuma nota fiscal encontrada no ERP.');
+              return;
+          }
+
+          console.log(`📦 Recebidas ${newInvoices.length} notas do ERP`);
 
           await saveInvoicesToDatabase(newInvoices);
 
           const updatedInvoices = await loadInvoicesFromDatabase();
           setInvoices(updatedInvoices);
 
+          alert(`✅ Sincronização concluída com sucesso!\n${newInvoices.length} notas foram processadas.`);
+          console.log('✨ Sincronização manual concluída!');
+
       } catch (error: any) {
-          setSyncError(error.message);
+          console.error('❌ Erro na sincronização:', error);
+          const errorMessage = error.message || 'Erro desconhecido ao sincronizar com ERP';
+          setSyncError(errorMessage);
+          alert(`❌ Erro na sincronização:\n${errorMessage}\n\nVerifique o console do navegador (F12) para mais detalhes.`);
       } finally {
           setIsSyncing(false);
       }

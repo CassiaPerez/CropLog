@@ -3,20 +3,27 @@ import { Invoice, Product } from '../types';
 
 export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void> {
   try {
-    console.log(`Salvando ${invoices.length} notas no banco de dados...`);
-    for (const invoice of invoices) {
-      const { data: existingInvoice, error: checkError } = await supabase
-        .from('invoices')
-        .select('id, is_assigned')
-        .eq('number', invoice.number)
-        .maybeSingle();
+    console.log(`💾 Salvando ${invoices.length} notas no banco de dados...`);
+    let newCount = 0;
+    let updatedCount = 0;
+    let errorCount = 0;
 
-      if (checkError) {
-        console.error(`Erro ao verificar nota ${invoice.number}:`, checkError);
-        continue;
-      }
+    for (const invoice of invoices) {
+      try {
+        const { data: existingInvoice, error: checkError } = await supabase
+          .from('invoices')
+          .select('id, is_assigned')
+          .eq('number', invoice.number)
+          .maybeSingle();
+
+        if (checkError) {
+          console.error(`❌ Erro ao verificar nota ${invoice.number}:`, checkError);
+          errorCount++;
+          continue;
+        }
 
       if (existingInvoice) {
+        console.log(`🔄 Atualizando nota existente: ${invoice.number}`);
         const { error: updateError } = await supabase
           .from('invoices')
           .update({
@@ -31,9 +38,11 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
           .eq('id', existingInvoice.id);
 
         if (updateError) {
-          console.error(`Erro ao atualizar nota ${invoice.number}:`, updateError);
+          console.error(`❌ Erro ao atualizar nota ${invoice.number}:`, updateError);
+          errorCount++;
           continue;
         }
+        updatedCount++;
 
         const { error: deleteItemsError } = await supabase
           .from('invoice_items')
@@ -64,6 +73,7 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
           }
         }
       } else {
+        console.log(`➕ Inserindo nova nota: ${invoice.number}`);
         const { data: newInvoice, error: insertError } = await supabase
           .from('invoices')
           .insert({
@@ -80,9 +90,11 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
           .single();
 
         if (insertError) {
-          console.error(`Erro ao inserir nota ${invoice.number}:`, insertError);
+          console.error(`❌ Erro ao inserir nota ${invoice.number}:`, insertError);
+          errorCount++;
           continue;
         }
+        newCount++;
 
         if (newInvoice) {
           const items = invoice.items.map(item => ({
@@ -106,10 +118,23 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
           }
         }
       }
+      } catch (invoiceError) {
+        console.error(`❌ Erro ao processar nota ${invoice.number}:`, invoiceError);
+        errorCount++;
+      }
     }
-    console.log('Todas as notas foram salvas com sucesso');
+
+    console.log('📊 Resumo da sincronização:');
+    console.log(`  ✅ Novas: ${newCount}`);
+    console.log(`  🔄 Atualizadas: ${updatedCount}`);
+    console.log(`  ❌ Erros: ${errorCount}`);
+    console.log('✨ Sincronização concluída!');
+
+    if (errorCount > 0 && (newCount + updatedCount) === 0) {
+      throw new Error(`Falha ao salvar notas: ${errorCount} erros encontrados`);
+    }
   } catch (error) {
-    console.error('Erro ao salvar notas no banco:', error);
+    console.error('❌ Erro crítico ao salvar notas no banco:', error);
     throw error;
   }
 }

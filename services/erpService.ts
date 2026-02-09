@@ -51,38 +51,69 @@ export const fetchErpInvoices = async (baseUrl: string, apiKey: string): Promise
   if (!baseUrl) throw new Error("URL da API não configurada.");
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   const edgeFunctionUrl = `${supabaseUrl}/functions/v1/erp-proxy`;
+
+  console.log('🔄 Iniciando sincronização com ERP...');
+  console.log('📍 URL do ERP:', baseUrl);
+  console.log('🔗 Edge Function:', edgeFunctionUrl);
 
   try {
     const response = await fetch(edgeFunctionUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'apikey': supabaseAnonKey,
       },
       body: JSON.stringify({ url: baseUrl })
     });
 
+    console.log('📥 Resposta da Edge Function:', response.status, response.statusText);
+
     if (!response.ok) {
-        if (response.status === 401) throw new Error("Não autorizado (401). Verifique a API Key.");
-        if (response.status === 404) throw new Error("Endpoint não encontrado (404).");
-        throw new Error(`Erro na API: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('❌ Erro na resposta:', errorText);
+
+        if (response.status === 401) throw new Error("Não autorizado (401). Verifique a configuração do Supabase.");
+        if (response.status === 404) throw new Error("Edge Function não encontrada (404).");
+        if (response.status === 500) throw new Error(`Erro interno na Edge Function: ${errorText}`);
+        throw new Error(`Erro na sincronização (${response.status}): ${errorText}`);
     }
 
     const apiResponse: ErpApiResponse = await response.json();
+    console.log('✅ Dados recebidos:', apiResponse.data?.length || 0, 'itens');
+
+    if (!apiResponse.data || !Array.isArray(apiResponse.data)) {
+      console.error('❌ Resposta da API inválida:', apiResponse);
+      throw new Error('Resposta da API não contém dados válidos');
+    }
+
+    if (apiResponse.data.length === 0) {
+      console.warn('⚠️ Nenhum dado retornado da API ERP');
+      return [];
+    }
 
     const invoicesMap = new Map<number, Invoice>();
 
+    console.log('🔨 Processando', apiResponse.data.length, 'itens do ERP...');
+
     apiResponse.data.forEach((item: ErpApiItem) => {
       const invoiceId = item.nr_docto;
+
+      if (!invoiceId) {
+        console.warn('⚠️ Item sem número de documento:', item);
+        return;
+      }
 
       if (!invoicesMap.has(invoiceId)) {
         invoicesMap.set(invoiceId, {
           id: `nf-${item.cod_empresa}-${invoiceId}`,
           number: `${invoiceId}`,
-          customerName: item.nome_pessoa,
-          customerCity: `${item.cidade_pessoa} - ${item.uf_pessoa}`,
-          issueDate: item.data_dcto.split('T')[0],
-          documentDate: item.data_dcto.split('T')[0],
+          customerName: item.nome_pessoa || 'Cliente não identificado',
+          customerCity: `${item.cidade_pessoa || ''} - ${item.uf_pessoa || ''}`.trim(),
+          issueDate: item.data_dcto?.split('T')[0] || new Date().toISOString().split('T')[0],
+          documentDate: item.data_dcto?.split('T')[0] || new Date().toISOString().split('T')[0],
           totalValue: 0,
           totalWeight: 0,
           isAssigned: false,
@@ -93,26 +124,34 @@ export const fetchErpInvoices = async (baseUrl: string, apiKey: string): Promise
       const invoice = invoicesMap.get(invoiceId)!;
 
       invoice.items.push({
-        sku: item.cod_item,
-        description: item.descricao,
-        quantity: item.quantidade,
-        unit: item.unidade,
-        weightKg: item.quantidade_kgl,
+        sku: item.cod_item || 'N/A',
+        description: item.descricao || 'Sem descrição',
+        quantity: item.quantidade || 0,
+        unit: item.unidade || 'UN',
+        weightKg: item.quantidade_kgl || 0,
         quantityPicked: 0
       });
 
-      invoice.totalValue += item.valor_liquido;
-      invoice.totalWeight += item.quantidade_kgl;
+      invoice.totalValue += item.valor_liquido || 0;
+      invoice.totalWeight += item.quantidade_kgl || 0;
     });
 
-    return Array.from(invoicesMap.values()).map(inv => ({
+    const invoices = Array.from(invoicesMap.values()).map(inv => ({
       ...inv,
       totalValue: parseFloat(inv.totalValue.toFixed(2)),
       totalWeight: parseFloat(inv.totalWeight.toFixed(2))
     }));
 
+    console.log('✅ Processadas', invoices.length, 'notas fiscais');
+    return invoices;
+
   } catch (error) {
-    console.error("ERP Sync Failed:", error);
-    throw error;
+    console.error("❌ Falha na sincronização ERP:", error);
+
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error('Erro desconhecido na sincronização com ERP');
   }
 };
