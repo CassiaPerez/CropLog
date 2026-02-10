@@ -1,25 +1,125 @@
 import { supabase } from './supabase';
-import { LoadMap } from '../types';
+import { LoadMap, TimelineEvent } from '../types';
+
+/**
+ * O banco (Supabase/Postgres) valida `status` com CHECK constraint.
+ * Este normalizador converte status da UI (PT-BR, enum, etc.) para um código consistente no DB.
+ *
+ * Ajuste os códigos retornados aqui caso sua constraint use outra lista.
+ */
+const STATUS_TO_DB: Record<string, string> = {
+  // UI PT-BR
+  'planejamento': 'planning',
+  'pronto_para_separacao': 'ready_for_separation',
+  'separacao': 'separation',
+  'em_separacao': 'in_separation',
+  'separado': 'separated',
+  'separado_com_divergencia': 'separated_with_divergence',
+  'pronto': 'ready',
+  'coletado': 'collected',
+  'em_transito': 'in_transit',
+  'entregue': 'delivered',
+
+  // chaves/valores já em formato DB (pass-through)
+  'planning': 'planning',
+  'ready_for_separation': 'ready_for_separation',
+  'separation': 'separation',
+  'in_separation': 'in_separation',
+  'separated': 'separated',
+  'separated_with_divergence': 'separated_with_divergence',
+  'ready': 'ready',
+  'collected': 'collected',
+  'in_transit': 'in_transit',
+  'delivered': 'delivered',
+};
+
+const DB_TO_STATUS_UI: Record<string, string> = {
+  planning: 'Planejamento',
+  ready_for_separation: 'Pronto para Separação',
+  separation: 'Separação',
+  in_separation: 'Em Separação',
+  separated: 'Separado',
+  separated_with_divergence: 'Separado com Divergência',
+  ready: 'Pronto',
+  collected: 'Coletado',
+  in_transit: 'Em Trânsito',
+  delivered: 'Entregue',
+};
+
+function stripAccents(input: string): string {
+  return (input || '')
+    .normalize('NFD')
+    // remove diacríticos
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function toKey(input: unknown): string {
+  const raw = String(input ?? '').trim();
+  if (!raw) return '';
+  const noAccents = stripAccents(raw).toLowerCase();
+  return noAccents
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function toDbStatus(status: unknown): string {
+  const key = toKey(status);
+  return STATUS_TO_DB[key] ?? key; // fallback: tenta usar o próprio valor normalizado
+}
+
+function fromDbStatus(status: unknown): any {
+  const key = toKey(status);
+  return DB_TO_STATUS_UI[key] ?? status;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(value);
+}
+
+function generateUuid(): string {
+  const g = (globalThis as any);
+  if (g?.crypto?.randomUUID) return g.crypto.randomUUID();
+  // eslint-disable-next-line no-bitwise
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 export async function saveLoadMapToDatabase(loadMap: LoadMap): Promise<void> {
   try {
+    const mapId = isUuid(loadMap.id) ? loadMap.id : generateUuid();
+    if (mapId !== loadMap.id) {
+      console.warn(`⚠️ loadMap.id inválido (não é UUID). Gerando novo UUID: ${mapId}`);
+      // @ts-expect-error - dependendo do seu tipo, isso pode ser readonly; mas é útil manter sincronizado no app
+      loadMap.id = mapId;
+    }
+
     console.log(`Salvando mapa de carga ${loadMap.code}...`);
 
-    const { error: mapError } = await supabase
+    const dbStatus = toDbStatus(loadMap.status);
+
+    // Salvar o mapa de carga
+    const { data: savedMap, error: mapError } = await supabase
       .from('load_maps')
-      .upsert({
-        id: loadMap.id, // ✅ agora vem UUID correto do createLoadMap
-        code: loadMap.code,
-        carrier_name: loadMap.carrierName,
-        vehicle_plate: loadMap.vehiclePlate,
-        source_city: loadMap.sourceCity,
-        route: loadMap.route,
-        google_maps_link: loadMap.googleMapsLink || null,
-        status: loadMap.status,
-        current_city: loadMap.currentCity,
-        logistics_notes: loadMap.logisticsNotes || null,
-        updated_at: new Date().toISOString(),
-      })
+      .upsert(
+        {
+          id: mapId,
+          code: loadMap.code,
+          carrier_name: loadMap.carrierName,
+          vehicle_plate: loadMap.vehiclePlate,
+          source_city: loadMap.sourceCity,
+          route: loadMap.route,
+          google_maps_link: loadMap.googleMapsLink || null,
+          status: dbStatus,
+          current_city: loadMap.currentCity,
+          logistics_notes: loadMap.logisticsNotes || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      )
       .select()
       .single();
 
@@ -28,47 +128,63 @@ export async function saveLoadMapToDatabase(loadMap: LoadMap): Promise<void> {
       throw mapError;
     }
 
-    // Remove relações antigas
-    await supabase.from('load_map_invoices').delete().eq('load_map_id', loadMap.id);
+    const persistedMapId = savedMap?.id ?? mapId;
 
-    // Insere relações novas
+    // Remover relações antigas
+    await supabase
+      .from('load_map_invoices')
+      .delete()
+      .eq('load_map_id', persistedMapId);
+
+    // Salvar novas relações com notas fiscais
     if (loadMap.invoices && loadMap.invoices.length > 0) {
-      const relations = loadMap.invoices.map((invoice) => ({
-        load_map_id: loadMap.id,
-        invoice_id: invoice.id,
-      }));
+      const relations = loadMap.invoices
+        .filter((invoice) => !!invoice?.id)
+        .map((invoice) => ({
+          load_map_id: persistedMapId,
+          invoice_id: invoice.id,
+        }));
 
-      const { error: relationsError } = await supabase.from('load_map_invoices').insert(relations);
-      if (relationsError) {
-        console.error(`Erro ao salvar relações do mapa ${loadMap.code}:`, relationsError);
+      if (relations.length > 0) {
+        const { error: relationsError } = await supabase
+          .from('load_map_invoices')
+          .insert(relations);
+
+        if (relationsError) {
+          console.error(`Erro ao salvar relações do mapa ${loadMap.code}:`, relationsError);
+        }
       }
     }
 
-    // Timeline
+    // Salvar timeline
     if (loadMap.timeline && loadMap.timeline.length > 0) {
       const { data: existingEvents } = await supabase
         .from('load_map_timeline')
         .select('timestamp, status')
-        .eq('load_map_id', loadMap.id);
+        .eq('load_map_id', persistedMapId);
 
-      const existingEventKeys = new Set(existingEvents?.map((e) => `${e.timestamp}-${e.status}`) || []);
+      const existingEventKeys = new Set(
+        (existingEvents || []).map((e: any) => `${e.timestamp}-${toKey(e.status)}`)
+      );
 
       const newEvents = loadMap.timeline.filter((event) => {
-        const eventKey = `${event.timestamp}-${event.status}`;
+        const eventKey = `${event.timestamp}-${toKey(event.status)}`;
         return !existingEventKeys.has(eventKey);
       });
 
       if (newEvents.length > 0) {
         const timelineData = newEvents.map((event) => ({
-          load_map_id: loadMap.id,
+          load_map_id: persistedMapId,
           timestamp: event.timestamp,
-          status: event.status,
+          status: toDbStatus(event.status),
           description: event.description,
           user_id: event.userId || null,
           user_name: event.userName || null,
         }));
 
-        const { error: timelineError } = await supabase.from('load_map_timeline').insert(timelineData);
+        const { error: timelineError } = await supabase
+          .from('load_map_timeline')
+          .insert(timelineData);
 
         if (timelineError) {
           console.error(`Erro ao salvar timeline do mapa ${loadMap.code}:`, timelineError);
@@ -102,92 +218,130 @@ export async function loadLoadMapsFromDatabase(): Promise<LoadMap[]> {
       return [];
     }
 
-    const mapIds = mapsData.map((m: any) => m.id);
+    console.log(`Encontrados ${mapsData.length} mapas de carga`);
 
-    const { data: relationsData } = await supabase
-      .from('load_map_invoices')
-      .select('load_map_id, invoice_id')
-      .in('load_map_id', mapIds);
+    const loadMaps: LoadMap[] = [];
 
-    const invoiceIds = Array.from(new Set((relationsData || []).map((r: any) => r.invoice_id)));
+    for (const mapData of mapsData) {
+      const { data: invoiceRelations, error: relationsError } = await supabase
+        .from('load_map_invoices')
+        .select(`
+          invoice_id,
+          invoices (
+            id,
+            number,
+            customer_name,
+            customer_city,
+            issue_date,
+            document_date,
+            total_value,
+            total_weight,
+            is_assigned
+          )
+        `)
+        .eq('load_map_id', mapData.id);
 
-    const { data: invoicesData } = await supabase.from('invoices').select('*').in('id', invoiceIds);
+      if (relationsError) {
+        console.error(`Erro ao carregar notas do mapa ${mapData.code}:`, relationsError);
+        continue;
+      }
 
-    const { data: timelineData } = await supabase
-      .from('load_map_timeline')
-      .select('*')
-      .in('load_map_id', mapIds)
-      .order('timestamp', { ascending: true });
+      const invoices: any[] = [];
+      if (invoiceRelations && invoiceRelations.length > 0) {
+        for (const relation of invoiceRelations) {
+          const invoice = (relation as any).invoices;
+          if (!invoice) continue;
 
-    const invoicesById = new Map((invoicesData || []).map((inv: any) => [inv.id, inv]));
-    const relationsByMap = new Map<string, string[]>();
-    for (const rel of relationsData || []) {
-      const arr = relationsByMap.get(rel.load_map_id) || [];
-      arr.push(rel.invoice_id);
-      relationsByMap.set(rel.load_map_id, arr);
-    }
+          const { data: itemsData, error: itemsError } = await supabase
+            .from('invoice_items')
+            .select('*')
+            .eq('invoice_id', invoice.id);
 
-    const timelineByMap = new Map<string, any[]>();
-    for (const evt of timelineData || []) {
-      const arr = timelineByMap.get(evt.load_map_id) || [];
-      arr.push(evt);
-      timelineByMap.set(evt.load_map_id, arr);
-    }
+          if (itemsError) {
+            console.error(`Erro ao carregar itens da nota ${invoice.number}:`, itemsError);
+            continue;
+          }
 
-    return (mapsData || []).map((m: any) => {
-      const invIds = relationsByMap.get(m.id) || [];
-      const invs = invIds
-        .map((id) => invoicesById.get(id))
-        .filter(Boolean)
-        .map((row: any) => ({
-          id: row.id,
-          number: row.number,
-          customerName: row.customer_name,
-          customerCity: row.customer_city,
-          issueDate: row.issue_date,
-          documentDate: row.document_date,
-          totalValue: row.total_value,
-          totalWeight: row.total_weight,
-          items: row.items || [],
-          isAssigned: row.is_assigned || false,
-        }));
+          const items = (itemsData || []).map((item: any) => ({
+            sku: item.sku,
+            description: item.description,
+            quantity: Number(item.quantity),
+            unit: item.unit,
+            weightKg: Number(item.weight_kg),
+            quantityPicked: item.quantity_picked ? Number(item.quantity_picked) : undefined,
+          }));
 
-      const tl = (timelineByMap.get(m.id) || []).map((t: any) => ({
-        id: t.id,
-        timestamp: t.timestamp,
-        status: t.status,
-        description: t.description,
-        userId: t.user_id,
-        userName: t.user_name,
+          invoices.push({
+            id: invoice.id,
+            number: invoice.number,
+            customerName: invoice.customer_name,
+            customerCity: invoice.customer_city,
+            issueDate: invoice.issue_date,
+            documentDate: invoice.document_date || invoice.issue_date,
+            totalValue: Number(invoice.total_value),
+            totalWeight: Number(invoice.total_weight),
+            items,
+            isAssigned: invoice.is_assigned,
+          });
+        }
+      }
+
+      const { data: timelineData, error: timelineError } = await supabase
+        .from('load_map_timeline')
+        .select('*')
+        .eq('load_map_id', mapData.id)
+        .order('timestamp', { ascending: true });
+
+      if (timelineError) {
+        console.error(`Erro ao carregar timeline do mapa ${mapData.code}:`, timelineError);
+      }
+
+      const timeline: TimelineEvent[] = (timelineData || []).map((event: any) => ({
+        timestamp: event.timestamp,
+        status: fromDbStatus(event.status),
+        description: event.description,
+        userId: event.user_id,
+        userName: event.user_name,
       }));
 
-      return {
-        id: m.id,
-        code: m.code,
-        carrierName: m.carrier_name || '',
-        vehiclePlate: m.vehicle_plate || '',
-        sourceCity: m.source_city || '',
-        route: m.route || '',
-        googleMapsLink: m.google_maps_link || '',
-        status: m.status,
-        currentCity: m.current_city || '',
-        logisticsNotes: m.logistics_notes || '',
-        invoices: invs,
-        timeline: tl,
-      };
-    });
+      loadMaps.push({
+        id: mapData.id,
+        code: mapData.code,
+        carrierName: mapData.carrier_name,
+        vehiclePlate: mapData.vehicle_plate,
+        sourceCity: mapData.source_city,
+        route: mapData.route,
+        googleMapsLink: mapData.google_maps_link || '',
+        status: fromDbStatus(mapData.status),
+        currentCity: mapData.current_city || '',
+        logisticsNotes: mapData.logistics_notes || '',
+        createdAt: mapData.created_at,
+        invoices,
+        timeline,
+      });
+    }
+
+    console.log(`Retornando ${loadMaps.length} mapas de carga completos`);
+    return loadMaps;
   } catch (error) {
-    console.error('Erro ao carregar mapas:', error);
+    console.error('Erro ao carregar mapas do banco:', error);
     return [];
   }
 }
 
-export async function deleteLoadMapFromDatabase(mapId: string): Promise<void> {
+export async function deleteLoadMapFromDatabase(loadMapId: string): Promise<void> {
   try {
-    await supabase.from('load_map_invoices').delete().eq('load_map_id', mapId);
-    await supabase.from('load_map_timeline').delete().eq('load_map_id', mapId);
-    const { error } = await supabase.from('load_maps').delete().eq('id', mapId);
-    if (error) throw error;
+    const { error } = await supabase
+      .from('load_maps')
+      .delete()
+      .eq('id', loadMapId);
+
+    if (error) {
+      console.error('Erro ao deletar mapa:', error);
+      throw error;
+    }
+
+    console.log('Mapa deletado com sucesso');
   } catch (error) {
     console.error('Erro ao deletar mapa:', error);
     throw error;
