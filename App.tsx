@@ -63,6 +63,8 @@ interface InvoiceSelectionViewProps {
   updateInvoiceAssignedStatus: (ids: string[], status: boolean) => Promise<void>;
   saveLoadMapToDatabase: (map: LoadMap) => Promise<void>;
   formatCurrency: (value: number) => string;
+  handleSyncErp: () => Promise<void>;
+  isSyncing: boolean;
 }
 
 interface SettingsViewProps {
@@ -438,7 +440,7 @@ const DashboardView: React.FC<DashboardViewProps> = (props) => {
 
 
 const InvoiceSelectionView: React.FC<InvoiceSelectionViewProps> = (props) => {
-  const { invoices, searchTerm, filterStartDate, filterEndDate, selectedInvoiceIds, setSelectedInvoiceIds, setSearchTerm, setFilterStartDate, setFilterEndDate, showFilters, setShowFilters, setViewingInvoice, setInvoices, setLoadMaps, setSelectedMapId, setCurrentView, createLoadMap, updateInvoiceAssignedStatus, saveLoadMapToDatabase, formatCurrency } = props;
+  const { invoices, searchTerm, filterStartDate, filterEndDate, selectedInvoiceIds, setSelectedInvoiceIds, setSearchTerm, setFilterStartDate, setFilterEndDate, showFilters, setShowFilters, setViewingInvoice, setInvoices, setLoadMaps, setSelectedMapId, setCurrentView, createLoadMap, updateInvoiceAssignedStatus, saveLoadMapToDatabase, formatCurrency, handleSyncErp, isSyncing } = props;
   const availableInvoices = useMemo(() => {
     let filtered = invoices.filter(inv => !inv.isAssigned);
 
@@ -2012,7 +2014,7 @@ function App() {
   return (
     <Layout currentView={currentView} onChangeView={setCurrentView} currentUser={currentUser} onLogout={handleLogout}>
         {currentView === 'DASHBOARD' && <DashboardView loadMaps={loadMaps} setCurrentView={setCurrentView} setSelectedMapId={setSelectedMapId} getStatusColor={getStatusColor} />}
-        {currentView === 'INVOICE_SELECT' && <InvoiceSelectionView invoices={invoices} searchTerm={searchTerm} filterStartDate={filterStartDate} filterEndDate={filterEndDate} selectedInvoiceIds={selectedInvoiceIds} setSelectedInvoiceIds={setSelectedInvoiceIds} setSearchTerm={setSearchTerm} setFilterStartDate={setFilterStartDate} setFilterEndDate={setFilterEndDate} showFilters={showFilters} setShowFilters={setShowFilters} setViewingInvoice={setViewingInvoice} setInvoices={setInvoices} setLoadMaps={setLoadMaps} setSelectedMapId={setSelectedMapId} setCurrentView={setCurrentView} createLoadMap={createLoadMap} updateInvoiceAssignedStatus={updateInvoiceAssignedStatus} saveLoadMapToDatabase={saveLoadMapToDatabase} formatCurrency={formatCurrency} />}
+        {currentView === 'INVOICE_SELECT' && <InvoiceSelectionView invoices={invoices} searchTerm={searchTerm} filterStartDate={filterStartDate} filterEndDate={filterEndDate} selectedInvoiceIds={selectedInvoiceIds} setSelectedInvoiceIds={setSelectedInvoiceIds} setSearchTerm={setSearchTerm} setFilterStartDate={setFilterStartDate} setFilterEndDate={setFilterEndDate} showFilters={showFilters} setShowFilters={setShowFilters} setViewingInvoice={setViewingInvoice} setInvoices={setInvoices} setLoadMaps={setLoadMaps} setSelectedMapId={setSelectedMapId} setCurrentView={setCurrentView} createLoadMap={createLoadMap} updateInvoiceAssignedStatus={updateInvoiceAssignedStatus} saveLoadMapToDatabase={saveLoadMapToDatabase} formatCurrency={formatCurrency} handleSyncErp={handleSyncErp} isSyncing={isSyncing} />}
         {currentView === 'LOAD_MAPS' && <LoadMapsPlannerView loadMaps={loadMaps} setSelectedMapId={setSelectedMapId} setCurrentView={setCurrentView} getStatusColor={getStatusColor} getLoadProgress={getLoadProgress} formatCurrency={formatCurrency} getLogoAsBase64={getLogoAsBase64} />}
         {currentView === 'MAP_DETAIL' && <PlanningMapDetailView loadMaps={loadMaps} selectedMapId={selectedMapId} setLoadMaps={setLoadMaps} setCurrentView={setCurrentView} addTimelineEvent={addTimelineEvent} formatCurrency={formatCurrency} getStatusColor={getStatusColor} getEmbedUrl={getEmbedUrl} saveLoadMapToDatabase={saveLoadMapToDatabase} deleteLoadMapFromDatabase={deleteLoadMapFromDatabase} updateInvoiceAssignedStatus={updateInvoiceAssignedStatus} setInvoices={setInvoices} getLogoAsBase64={getLogoAsBase64} />}
         {currentView === 'SEPARATION_LIST' && <SeparationListView loadMaps={loadMaps} setSelectedMapId={setSelectedMapId} setCurrentView={setCurrentView} getStatusColor={getStatusColor} />}
