@@ -1,52 +1,29 @@
 import React from 'react';
-import { X, UserPlus, Save } from 'lucide-react';
-import type { User, UserRole } from '../types';
+import { X, Package, Weight } from 'lucide-react';
+import type { Invoice } from '../types';
 
-interface UserFormModalProps {
-  isOpen: boolean;
+interface ProductModalProps {
+  invoice: Invoice | null;
   onClose: () => void;
-
-  editingUser: User | null;
-
-  userFormName: string;
-  setUserFormName: (value: string) => void;
-
-  userFormRole: UserRole;
-  setUserFormRole: (role: UserRole) => void;
-
-  handleSaveUser: (e: React.FormEvent) => void;
 }
 
-export const UserFormModal: React.FC<UserFormModalProps> = ({
-  isOpen,
-  onClose,
-  editingUser,
-  userFormName,
-  setUserFormName,
-  userFormRole,
-  setUserFormRole,
-  handleSaveUser
-}) => {
-  if (!isOpen) return null;
+export const ProductModal: React.FC<ProductModalProps> = ({ invoice, onClose }) => {
+  if (!invoice) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111621]/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col border border-[#e7ebf3]">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] border border-[#e7ebf3]">
         <div className="flex items-center justify-between p-8 bg-white border-b border-[#e7ebf3]">
           <div className="flex items-center gap-6">
             <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 shadow-sm">
-              {editingUser ? (
-                <Save className="text-primary" size={28} />
-              ) : (
-                <UserPlus className="text-primary" size={28} />
-              )}
+              <Package className="text-primary" size={28} />
             </div>
             <div>
               <h2 className="text-xl font-bold text-[#0e121b]">
-                {editingUser ? 'Editar Usuário' : 'Novo Usuário'}
+                Nota Fiscal {invoice.number}
               </h2>
               <p className="text-base text-gray-500 font-medium">
-                {editingUser ? `Atualize os dados de ${editingUser.name}` : 'Cadastre um usuário e defina a permissão.'}
+                {invoice.customerName} - {invoice.customerCity}
               </p>
             </div>
           </div>
@@ -55,62 +32,70 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500"
             aria-label="Fechar"
-            type="button"
           >
             <X size={24} />
           </button>
         </div>
 
-        <form onSubmit={handleSaveUser} className="p-8 space-y-6">
-          <div className="space-y-2">
-            <label className="text-sm font-bold uppercase tracking-wider text-[#4e6797]">
-              Nome
-            </label>
-            <input
-              value={userFormName}
-              onChange={(e) => setUserFormName(e.target.value)}
-              className="w-full px-5 py-4 bg-gray-50 rounded-xl border border-[#e7ebf3] focus:outline-none focus:ring-2 focus:ring-primary/20 text-base font-medium text-[#0e121b]"
-              placeholder="Ex: Maria Silva"
-              required
-              autoFocus
-            />
+        <div className="p-8 overflow-y-auto">
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-gray-50 p-4 rounded-xl border border-[#e7ebf3]">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#4e6797] mb-1">Total de Itens</p>
+              <p className="text-2xl font-bold text-[#0e121b]">
+                {invoice.items.reduce((acc, item) => acc + item.quantity, 0)}
+              </p>
+            </div>
+            <div className="bg-gray-50 p-4 rounded-xl border border-[#e7ebf3]">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#4e6797] mb-1">Peso Total</p>
+              <p className="text-2xl font-bold text-[#0e121b]">
+                {invoice.totalWeight.toFixed(2)} kg
+              </p>
+            </div>
+            <div className="bg-gray-50 p-4 rounded-xl border border-[#e7ebf3]">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#4e6797] mb-1">Valor Total</p>
+              <p className="text-2xl font-bold text-[#0e121b]">
+                R$ {invoice.totalValue.toFixed(2)}
+              </p>
+            </div>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-bold uppercase tracking-wider text-[#4e6797]">
-              Permissão
-            </label>
-            <select
-              value={userFormRole}
-              onChange={(e) => setUserFormRole(e.target.value as UserRole)}
-              className="w-full px-5 py-4 bg-gray-50 rounded-xl border border-[#e7ebf3] focus:outline-none focus:ring-2 focus:ring-primary/20 text-base font-bold text-[#0e121b]"
-              required
-            >
-              <option value="ADMIN">Administrador</option>
-              <option value="LOGISTICA_PLANEJAMENTO">Planejamento Logístico</option>
-              <option value="SEPARACAO">Equipe de Separação</option>
-              <option value="STATUS_OPERACAO">Operação & Trânsito</option>
-            </select>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-[#4e6797] mb-4">Produtos</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[#e7ebf3]">
+                    <th className="text-left p-3 text-xs font-bold uppercase tracking-wider text-[#4e6797]">SKU</th>
+                    <th className="text-left p-3 text-xs font-bold uppercase tracking-wider text-[#4e6797]">Descrição</th>
+                    <th className="text-center p-3 text-xs font-bold uppercase tracking-wider text-[#4e6797]">Qtd</th>
+                    <th className="text-center p-3 text-xs font-bold uppercase tracking-wider text-[#4e6797]">Unidade</th>
+                    <th className="text-right p-3 text-xs font-bold uppercase tracking-wider text-[#4e6797]">Peso</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoice.items.map((item, idx) => (
+                    <tr key={idx} className="border-b border-[#e7ebf3] hover:bg-gray-50 transition-colors">
+                      <td className="p-3 font-mono text-sm font-bold text-[#0e121b]">{item.sku}</td>
+                      <td className="p-3 text-sm text-gray-700">{item.description}</td>
+                      <td className="p-3 text-center text-sm font-bold text-[#0e121b]">{item.quantity}</td>
+                      <td className="p-3 text-center text-sm text-gray-600">{item.unit}</td>
+                      <td className="p-3 text-right font-mono text-sm font-bold text-[#0e121b]">{item.weightKg.toFixed(2)} kg</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+        </div>
 
-          <div className="pt-2 flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-3 bg-white border border-[#e7ebf3] text-[#0e121b] rounded-lg hover:bg-gray-50 font-bold transition-all"
-            >
-              Cancelar
-            </button>
-
-            <button
-              type="submit"
-              className="px-8 py-3 bg-[#111621] text-white rounded-lg hover:bg-black font-bold transition-all shadow-md flex items-center gap-2"
-            >
-              <Save size={18} />
-              {editingUser ? 'Salvar' : 'Criar'}
-            </button>
-          </div>
-        </form>
+        <div className="p-8 bg-gray-50 border-t border-[#e7ebf3] flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 bg-[#111621] text-white rounded-lg hover:bg-black font-bold transition-all shadow-md"
+          >
+            Fechar
+          </button>
+        </div>
       </div>
     </div>
   );
