@@ -117,6 +117,7 @@ interface SeparationDetailViewProps {
   addTimelineEvent: (mapId: string, status: LoadStatus, description: string) => Promise<void>;
   formatCurrency: (value: number) => string;
   getStatusColor: (status: LoadStatus) => string;
+  currentUser: User | null;
 }
 
 interface OperationListViewProps {
@@ -145,6 +146,7 @@ interface AdminUsersViewProps {
   handleDeleteUser: (userId: string) => Promise<void>;
   getRoleLabel: (role: UserRole) => string;
   getRoleColor: (role: UserRole) => string;
+  currentUser: User | null;
 }
 
 
@@ -1272,7 +1274,7 @@ const PlanningMapDetailView: React.FC<PlanningMapDetailViewProps> = (props) => {
 
 
 const SeparationDetailView: React.FC<SeparationDetailViewProps> = (props) => {
-  const { loadMaps, selectedMapId, setLoadMaps, setCurrentView, addTimelineEvent, formatCurrency, getStatusColor } = props;
+  const { loadMaps, selectedMapId, setLoadMaps, setCurrentView, addTimelineEvent, formatCurrency, getStatusColor, currentUser } = props;
   // ... (no changes needed)
   const map = loadMaps.find(m => m.id === selectedMapId);
   if (!map) return <div>Mapa não encontrado</div>;
@@ -1570,7 +1572,7 @@ const OperationDetailView: React.FC<OperationDetailViewProps> = (props) => {
 
 
 const AdminUsersView: React.FC<AdminUsersViewProps> = (props) => {
-  const { users, isUsersLoading, handleOpenNewUser, handleEditUser, handleDeleteUser, getRoleLabel, getRoleColor } = props;
+  const { users, isUsersLoading, handleOpenNewUser, handleEditUser, handleDeleteUser, getRoleLabel, getRoleColor, currentUser } = props;
   // ... (no changes needed)
   if (currentUser?.role !== 'ADMIN') {
       return <div className="p-10 text-center text-xl text-red-500 font-bold">Acesso Negado: Você não tem permissão para visualizar esta página.</div>;
@@ -2018,10 +2020,10 @@ function App() {
         {currentView === 'LOAD_MAPS' && <LoadMapsPlannerView loadMaps={loadMaps} setSelectedMapId={setSelectedMapId} setCurrentView={setCurrentView} getStatusColor={getStatusColor} getLoadProgress={getLoadProgress} formatCurrency={formatCurrency} getLogoAsBase64={getLogoAsBase64} />}
         {currentView === 'MAP_DETAIL' && <PlanningMapDetailView loadMaps={loadMaps} selectedMapId={selectedMapId} setLoadMaps={setLoadMaps} setCurrentView={setCurrentView} addTimelineEvent={addTimelineEvent} formatCurrency={formatCurrency} getStatusColor={getStatusColor} getEmbedUrl={getEmbedUrl} saveLoadMapToDatabase={saveLoadMapToDatabase} deleteLoadMapFromDatabase={deleteLoadMapFromDatabase} updateInvoiceAssignedStatus={updateInvoiceAssignedStatus} setInvoices={setInvoices} getLogoAsBase64={getLogoAsBase64} />}
         {currentView === 'SEPARATION_LIST' && <SeparationListView loadMaps={loadMaps} setSelectedMapId={setSelectedMapId} setCurrentView={setCurrentView} getStatusColor={getStatusColor} />}
-        {currentView === 'SEPARATION_DETAIL' && <SeparationDetailView loadMaps={loadMaps} selectedMapId={selectedMapId} setLoadMaps={setLoadMaps} setCurrentView={setCurrentView} addTimelineEvent={addTimelineEvent} formatCurrency={formatCurrency} getStatusColor={getStatusColor} />}
+        {currentView === 'SEPARATION_DETAIL' && <SeparationDetailView loadMaps={loadMaps} selectedMapId={selectedMapId} setLoadMaps={setLoadMaps} setCurrentView={setCurrentView} addTimelineEvent={addTimelineEvent} formatCurrency={formatCurrency} getStatusColor={getStatusColor} currentUser={currentUser} />}
         {currentView === 'OPERATION_LIST' && <OperationListView loadMaps={loadMaps} setSelectedMapId={setSelectedMapId} setCurrentView={setCurrentView} getStatusColor={getStatusColor} />}
         {currentView === 'OPERATION_DETAIL' && <OperationDetailView loadMaps={loadMaps} selectedMapId={selectedMapId} setLoadMaps={setLoadMaps} setCurrentView={setCurrentView} addTimelineEvent={addTimelineEvent} formatCurrency={formatCurrency} getStatusColor={getStatusColor} getEmbedUrl={getEmbedUrl} />}
-        {currentView === 'ADMIN_USERS' && <AdminUsersView users={users} isUsersLoading={isUsersLoading} handleOpenNewUser={handleOpenNewUser} handleEditUser={handleEditUser} handleDeleteUser={handleDeleteUser} getRoleLabel={getRoleLabel} getRoleColor={getRoleColor} />}
+        {currentView === 'ADMIN_USERS' && <AdminUsersView users={users} isUsersLoading={isUsersLoading} handleOpenNewUser={handleOpenNewUser} handleEditUser={handleEditUser} handleDeleteUser={handleDeleteUser} getRoleLabel={getRoleLabel} getRoleColor={getRoleColor} currentUser={currentUser} />}
         {currentView === 'SETTINGS' && <SettingsView apiConfig={apiConfig} setApiConfig={setApiConfig} isSyncing={isSyncing} syncError={syncError} handleSaveSettings={handleSaveSettings} handleSyncErp={handleSyncErp} />}
         <UserFormModal
           isOpen={isUserModalOpen}
