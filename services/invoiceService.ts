@@ -1,136 +1,231 @@
 import { supabase } from './supabase';
 import { Invoice } from '../types';
 
-// Salva/atualiza notas no banco (não mexe no id uuid do banco)
+function createInvoiceHash(invoice: Invoice): string {
+  const data = {
+    customerName: invoice.customerName,
+    customerCity: invoice.customerCity,
+    totalValue: invoice.totalValue.toFixed(2),
+    totalWeight: invoice.totalWeight.toFixed(3),
+    itemsCount: invoice.items.length,
+    itemsHash: invoice.items
+      .map(i => `${i.sku}:${i.quantity}:${i.weightKg}`)
+      .sort()
+      .join('|')
+  };
+  return btoa(JSON.stringify(data));
+}
+
+function hasInvoiceChanged(newInv: Invoice, oldInv: any): boolean {
+  if (!oldInv) return true;
+
+  if (oldInv.erp_data_hash) {
+    const newHash = createInvoiceHash(newInv);
+    return newHash !== oldInv.erp_data_hash;
+  }
+
+  const isValueDiff = Math.abs(newInv.totalValue - oldInv.total_value) > 0.01;
+  const isWeightDiff = Math.abs(newInv.totalWeight - oldInv.total_weight) > 0.001;
+  const isDateDiff = newInv.issueDate !== oldInv.issue_date;
+  const isCustomerDiff = newInv.customerName !== oldInv.customer_name;
+
+  return isValueDiff || isWeightDiff || isDateDiff || isCustomerDiff;
+}
+
 export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void> {
-  try {
-    console.log(`Salvando ${invoices.length} notas no banco de dados...`);
+  if (invoices.length === 0) return;
 
-    for (const invoice of invoices) {
-      // Procura por número (chave de negócio) para evitar duplicidade
-      const { data: existingInvoice, error: checkError } = await supabase
-        .from('invoices')
-        .select('id, is_assigned')
-        .eq('number', invoice.number)
-        .maybeSingle();
+  console.log(`🚀 Iniciando sincronização inteligente de ${invoices.length} notas...`);
+  const startTime = performance.now();
 
-      if (checkError) {
-        console.error(`Erro ao verificar nota ${invoice.number}:`, checkError);
-        continue;
-      }
+  const apiInvoiceNumbers = invoices.map(inv => inv.number);
 
-      if (existingInvoice) {
-        // Atualiza (sem alterar o id uuid)
-        const { error: updateError } = await supabase
+  const { data: allInvoices } = await supabase
+    .from('invoices')
+    .select('id, number, total_value, total_weight, issue_date, customer_name, erp_data_hash, is_assigned');
+
+  const toDelete = (allInvoices || []).filter(
+    inv => !apiInvoiceNumbers.includes(inv.number) && !inv.is_assigned
+  );
+
+  if (toDelete.length > 0) {
+    console.log(`🗑️ Removendo ${toDelete.length} notas canceladas/ausentes...`);
+    const idsToDelete = toDelete.map(inv => inv.id);
+
+    await supabase.from('invoice_items').delete().in('invoice_id', idsToDelete);
+    const { error: deleteError } = await supabase
+      .from('invoices')
+      .delete()
+      .in('id', idsToDelete);
+
+    if (deleteError) {
+      console.error('❌ Erro ao excluir notas canceladas:', deleteError);
+    } else {
+      console.log(`✅ ${toDelete.length} notas canceladas removidas`);
+    }
+  }
+
+  const { data: existingInvoices } = await supabase
+    .from('invoices')
+    .select('id, number, total_value, total_weight, issue_date, customer_name, erp_data_hash')
+    .in('number', apiInvoiceNumbers);
+
+  const existingMap = new Map();
+  existingInvoices?.forEach(inv => existingMap.set(inv.number, inv));
+
+  // 3. Filtrar apenas o que precisa ser salvo
+  const invoicesToSave = invoices.filter(invoice => {
+    const oldInvoice = existingMap.get(invoice.number);
+    const changed = hasInvoiceChanged(invoice, oldInvoice);
+    if (!changed) {
+      // console.log(`⏭️ Pulan nota ${invoice.number} (sem alterações)`);
+    }
+    return changed;
+  });
+
+  console.log(`💾 Processando: ${invoicesToSave.length} notas alteradas/novas (de ${invoices.length} totais).`);
+
+  if (invoicesToSave.length === 0) {
+    console.log('✅ Nenhuma alteração necessária.');
+    return;
+  }
+
+  // 4. Processamento em Lotes (Batch) com Paralelismo Limitado
+  // Processamos 10 notas simultaneamente para não sobrecarregar o banco
+  const BATCH_SIZE = 10; 
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (let i = 0; i < invoicesToSave.length; i += BATCH_SIZE) {
+    const chunk = invoicesToSave.slice(i, i + BATCH_SIZE);
+    
+    await Promise.all(chunk.map(async (invoice) => {
+      try {
+        const hash = createInvoiceHash(invoice);
+
+        const { data: savedInvoice, error: upsertError } = await supabase
           .from('invoices')
-          .update({
+          .upsert({
+            number: invoice.number,
             customer_name: invoice.customerName,
             customer_city: invoice.customerCity,
             issue_date: invoice.issueDate,
             document_date: invoice.documentDate,
             total_value: invoice.totalValue,
             total_weight: invoice.totalWeight,
-            items: invoice.items,
-            // Mantém o status atual se já existe
-            is_assigned: existingInvoice.is_assigned ?? false,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingInvoice.id);
+            is_assigned: invoice.isAssigned || false,
+            erp_data_hash: hash,
+            last_synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'number' })
+          .select('id')
+          .single();
 
-        if (updateError) {
-          console.error(`Erro ao atualizar nota ${invoice.number}:`, updateError);
-        }
-      } else {
-        // Insere nova (deixa o banco gerar o id uuid)
-        const { error: insertError } = await supabase.from('invoices').insert({
-          number: invoice.number,
-          customer_name: invoice.customerName,
-          customer_city: invoice.customerCity,
-          issue_date: invoice.issueDate,
-          document_date: invoice.documentDate,
-          total_value: invoice.totalValue,
-          total_weight: invoice.totalWeight,
-          items: invoice.items,
-          is_assigned: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+        if (upsertError) throw upsertError;
 
-        if (insertError) {
-          console.error(`Erro ao inserir nota ${invoice.number}:`, insertError);
+        // B. Substituição dos Itens (Delete + Insert é mais seguro para consistência)
+        // Primeiro remove itens antigos dessa nota
+        await supabase.from('invoice_items').delete().eq('invoice_id', savedInvoice.id);
+
+        // Insere os novos
+        const itemsToInsert = invoice.items.map(item => ({
+          invoice_id: savedInvoice.id,
+          sku: item.sku,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          weight_kg: item.weightKg,
+          quantity_picked: item.quantityPicked
+        }));
+
+        if (itemsToInsert.length > 0) {
+          const { error: itemsError } = await supabase.from('invoice_items').insert(itemsToInsert);
+          if (itemsError) throw itemsError;
         }
+
+        successCount++;
+      } catch (err) {
+        console.error(`❌ Falha na nota ${invoice.number}:`, err);
+        errorCount++;
       }
-    }
+    }));
+    
+    // Pequeno log de progresso
+    console.log(`⏳ Processado lote ${i + chunk.length}/${invoicesToSave.length}`);
+  }
 
-    console.log('Notas salvas com sucesso!');
-  } catch (error) {
-    console.error('Erro ao salvar notas:', error);
-    throw error;
+  const endTime = performance.now();
+  const duration = ((endTime - startTime) / 1000).toFixed(2);
+  const skipped = invoices.length - invoicesToSave.length;
+
+  console.log(`\n✨ Sincronização finalizada em ${duration}s`);
+  console.log(`📊 Resumo:`);
+  console.log(`  ✅ Salvas/Atualizadas: ${successCount}`);
+  console.log(`  ⏭️ Sem mudanças: ${skipped}`);
+  console.log(`  🗑️ Removidas: ${toDelete.length}`);
+  console.log(`  ❌ Erros: ${errorCount}`);
+  console.log(`  📦 Total processado: ${invoices.length} notas\n`);
+
+  if (errorCount > 0) {
+    throw new Error(`Sincronização concluída com ${errorCount} erro(s)`);
   }
 }
 
 export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
   try {
-    const { data, error } = await supabase
+    const { data: invoices, error } = await supabase
       .from('invoices')
-      .select('*')
+      .select(`
+        *,
+        invoice_items (
+          id,
+          sku,
+          description,
+          quantity,
+          unit,
+          weight_kg,
+          quantity_picked
+        )
+      `)
       .order('document_date', { ascending: false });
 
-    if (error) {
-      console.error('Erro ao carregar notas:', error);
-      return [];
-    }
+    if (error) throw error;
 
-    return (data || []).map((row: any) => ({
-      id: row.id,
-      number: row.number,
-      customerName: row.customer_name,
-      customerCity: row.customer_city,
-      issueDate: row.issue_date,
-      documentDate: row.document_date,
-      totalValue: row.total_value,
-      totalWeight: row.total_weight,
-      items: row.items || [],
-      isAssigned: row.is_assigned || false,
+    return (invoices || []).map(inv => ({
+      id: inv.id,
+      number: inv.number,
+      customerName: inv.customer_name,
+      customerCity: inv.customer_city,
+      issueDate: inv.issue_date,
+      documentDate: inv.document_date,
+      totalValue: inv.total_value,
+      totalWeight: inv.total_weight,
+      isAssigned: inv.is_assigned,
+      items: (inv.invoice_items || []).map((item: any) => ({
+        sku: item.sku,
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        weightKg: item.weight_kg,
+        quantityPicked: item.quantity_picked || 0
+      }))
     }));
   } catch (error) {
-    console.error('Erro ao carregar notas:', error);
-    return [];
+    console.error('❌ Erro ao carregar notas do banco:', error);
+    throw error;
   }
 }
 
-/**
- * ✅ CORRIGIDO: aceita 1 id ou vários ids (array)
- * Usa `.in('id', ids)` (em vez de `.eq('id', "uuid1,uuid2")`)
- */
-export async function updateInvoiceAssignedStatus(
-  ids: string[] | string,
-  isAssigned: boolean
-): Promise<void> {
+export async function updateInvoiceAssignedStatus(invoiceId: string, isAssigned: boolean): Promise<void> {
   try {
-    const idList = Array.isArray(ids) ? ids : [ids];
-    if (idList.length === 0) return;
-
-    // Se quiser segurança extra:
-    // const onlyUuids = idList.filter(x => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(x));
-    // if (onlyUuids.length === 0) return;
-
     const { error } = await supabase
       .from('invoices')
-      .update({
-        is_assigned: isAssigned,
-        updated_at: new Date().toISOString(),
-      })
-      .in('id', idList);
+      .update({ is_assigned: isAssigned })
+      .eq('id', invoiceId);
 
-    if (error) {
-      console.error('❌ Erro ao atualizar status da(s) nota(s):', error);
-      throw error;
-    }
-
-    console.log(`✅ Status atualizado para ${isAssigned ? 'atribuída' : 'livre'} em ${idList.length} nota(s).`);
+    if (error) throw error;
   } catch (error) {
-    console.error('Erro ao atualizar status da nota:', error);
+    console.error('❌ Erro ao atualizar status da nota:', error);
     throw error;
   }
 }
