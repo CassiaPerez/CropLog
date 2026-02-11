@@ -57,8 +57,7 @@ function App() {
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [quickSearchDocNumber, setQuickSearchDocNumber] = useState('');
-  const [isQuickSearching, setIsQuickSearching] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
   // Selection State
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
@@ -118,18 +117,15 @@ function App() {
     }
   };
 
-  const handleQuickSearch = async () => {
-    if (!quickSearchDocNumber.trim()) return;
+  const handleSearchByDocNumber = async () => {
+    if (!searchTerm.trim()) return;
 
-    const docNumber = parseInt(quickSearchDocNumber.trim());
-    if (isNaN(docNumber)) {
-      alert('Digite um número de documento válido');
-      return;
-    }
+    const docNumber = parseInt(searchTerm.trim());
+    if (isNaN(docNumber)) return;
 
-    setIsQuickSearching(true);
+    setIsSearching(true);
     try {
-      console.log(`Buscando nota fiscal ${docNumber}...`);
+      console.log(`Buscando nota fiscal ${docNumber} na API...`);
       const foundInvoices = await fetchInvoiceByDocNumber(apiConfig.baseUrl, docNumber);
 
       if (foundInvoices.length === 0) {
@@ -148,7 +144,7 @@ function App() {
       console.error('Erro ao buscar nota:', error);
       alert(`Erro ao buscar nota: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     } finally {
-      setIsQuickSearching(false);
+      setIsSearching(false);
     }
   };
 
@@ -887,47 +883,6 @@ function App() {
              </div>
         )}
 
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-3xl shadow-soft p-6 border-2 border-blue-200/50 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-3">
-                <Search size={24} className="text-blue-600" />
-                <h3 className="text-xl font-bold text-text-main">Busca Rápida por NF</h3>
-              </div>
-              <div className="flex gap-3">
-                <input
-                  type="number"
-                  value={quickSearchDocNumber}
-                  onChange={(e) => setQuickSearchDocNumber(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleQuickSearch()}
-                  placeholder="Digite o número da nota fiscal..."
-                  className="flex-1 px-4 py-3 bg-white rounded-xl border-2 border-blue-200 focus:border-blue-400 outline-none transition-all"
-                />
-                <button
-                  onClick={handleQuickSearch}
-                  disabled={isQuickSearching || !quickSearchDocNumber.trim()}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-3 rounded-xl font-bold transition-all flex items-center gap-2"
-                >
-                  {isQuickSearching ? (
-                    <>
-                      <Loader2 size={20} className="animate-spin" />
-                      Buscando...
-                    </>
-                  ) : (
-                    <>
-                      <Search size={20} />
-                      Buscar
-                    </>
-                  )}
-                </button>
-              </div>
-              <p className="text-sm text-slate-600 mt-2">
-                Busca diretamente na API e exibe os detalhes da nota fiscal específica
-              </p>
-            </div>
-          </div>
-        </div>
-
         <div className="bg-white rounded-3xl shadow-soft p-6 border border-border/50">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -950,13 +905,24 @@ function App() {
                 <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block flex items-center gap-2">
                   <Search size={16} /> Pesquisar
                 </label>
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="NF, Cliente ou Cidade..."
-                  className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearchByDocNumber()}
+                    placeholder="NF, Cliente ou Cidade (Enter para buscar na API)"
+                    className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
+                  />
+                  {isSearching && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 size={20} className="animate-spin text-primary" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Digite apenas o número da NF e pressione Enter para buscar na API
+                </p>
               </div>
               <div>
                 <label className="text-sm font-bold text-text-secondary uppercase tracking-wide mb-2 block flex items-center gap-2">
@@ -1017,7 +983,17 @@ function App() {
                                     {selectedInvoiceIds.has(inv.id) && <Check size={16} className="text-white"/>}
                                 </div>
                             </td>
-                            <td className="p-6 font-bold text-text-main text-lg">{inv.number}</td>
+                            <td className="p-6">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-text-main text-lg">{inv.number}</span>
+                                {inv.isModified && (
+                                  <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-lg flex items-center gap-1">
+                                    <AlertTriangle size={12} />
+                                    ALTERADA
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="p-6 text-text-secondary text-base">
                                 {new Date(inv.documentDate).toLocaleDateString('pt-BR')}
                             </td>

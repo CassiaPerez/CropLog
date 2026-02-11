@@ -40,6 +40,10 @@ export interface Invoice {
   totalWeight: number;
   items: Product[];
   isAssigned: boolean;
+  isModified?: boolean;
+  lastModifiedAt?: string;
+  isCancelled?: boolean;
+  apiHash?: string;
 }
 
 export interface TimelineEvent {

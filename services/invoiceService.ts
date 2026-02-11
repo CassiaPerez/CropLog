@@ -42,26 +42,28 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
 
   const { data: allInvoices } = await supabase
     .from('invoices')
-    .select('id, number, total_value, total_weight, issue_date, customer_name, erp_data_hash, is_assigned');
+    .select('id, number, total_value, total_weight, issue_date, customer_name, erp_data_hash, is_assigned, is_cancelled');
 
-  const toDelete = (allInvoices || []).filter(
-    inv => !apiInvoiceNumbers.includes(inv.number) && !inv.is_assigned
+  const toCancel = (allInvoices || []).filter(
+    inv => !apiInvoiceNumbers.includes(inv.number) && !inv.is_assigned && !inv.is_cancelled
   );
 
-  if (toDelete.length > 0) {
-    console.log(`🗑️ Removendo ${toDelete.length} notas canceladas/ausentes...`);
-    const idsToDelete = toDelete.map(inv => inv.id);
+  if (toCancel.length > 0) {
+    console.log(`🚫 Marcando ${toCancel.length} notas como canceladas...`);
+    const idsToCancel = toCancel.map(inv => inv.id);
 
-    await supabase.from('invoice_items').delete().in('invoice_id', idsToDelete);
-    const { error: deleteError } = await supabase
+    const { error: cancelError } = await supabase
       .from('invoices')
-      .delete()
-      .in('id', idsToDelete);
+      .update({
+        is_cancelled: true,
+        last_modified_at: new Date().toISOString()
+      })
+      .in('id', idsToCancel);
 
-    if (deleteError) {
-      console.error('❌ Erro ao excluir notas canceladas:', deleteError);
+    if (cancelError) {
+      console.error('❌ Erro ao marcar notas como canceladas:', cancelError);
     } else {
-      console.log(`✅ ${toDelete.length} notas canceladas removidas`);
+      console.log(`✅ ${toCancel.length} notas marcadas como canceladas`);
     }
   }
 
@@ -102,6 +104,9 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
     await Promise.all(chunk.map(async (invoice) => {
       try {
         const hash = createInvoiceHash(invoice);
+        const oldInvoice = existingMap.get(invoice.number);
+        const isModified = oldInvoice && hasInvoiceChanged(invoice, oldInvoice);
+        const wasReactivated = oldInvoice && existingMap.get(invoice.number)?.is_cancelled;
 
         const { data: savedInvoice, error: upsertError } = await supabase
           .from('invoices')
@@ -115,6 +120,10 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
             total_weight: invoice.totalWeight,
             is_assigned: invoice.isAssigned || false,
             erp_data_hash: hash,
+            api_hash: hash,
+            is_modified: isModified,
+            is_cancelled: false,
+            last_modified_at: (isModified || wasReactivated) ? new Date().toISOString() : undefined,
             last_synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }, { onConflict: 'number' })
@@ -187,6 +196,7 @@ export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
           quantity_picked
         )
       `)
+      .eq('is_cancelled', false)
       .order('document_date', { ascending: false });
 
     if (error) throw error;
@@ -201,6 +211,10 @@ export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
       totalValue: inv.total_value,
       totalWeight: inv.total_weight,
       isAssigned: inv.is_assigned,
+      isModified: inv.is_modified,
+      lastModifiedAt: inv.last_modified_at,
+      isCancelled: inv.is_cancelled,
+      apiHash: inv.api_hash,
       items: (inv.invoice_items || []).map((item: any) => ({
         sku: item.sku,
         description: item.description,

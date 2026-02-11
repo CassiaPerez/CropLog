@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, PackageSearch } from 'lucide-react';
+import { X, PackageSearch, AlertTriangle } from 'lucide-react';
 import { Invoice } from '../types';
 
 interface ProductModalProps {
@@ -19,7 +19,15 @@ export const ProductModal: React.FC<ProductModalProps> = ({ invoice, onClose }) 
                  <PackageSearch className="text-primary" size={28} />
              </div>
              <div>
-                 <h2 className="text-xl font-bold text-[#0e121b]">Itens da Nota</h2>
+                 <div className="flex items-center gap-3">
+                   <h2 className="text-xl font-bold text-[#0e121b]">Itens da Nota</h2>
+                   {invoice.isModified && (
+                     <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-lg flex items-center gap-1">
+                       <AlertTriangle size={12} />
+                       MODIFICADA
+                     </span>
+                   )}
+                 </div>
                  <p className="text-base text-gray-500 font-medium">NF: {invoice.number} • Data Doc: {new Date(invoice.documentDate).toLocaleDateString()}</p>
              </div>
           </div>
