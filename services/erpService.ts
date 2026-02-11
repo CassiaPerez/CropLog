@@ -7,6 +7,7 @@ import {
   failSyncHistory,
   updateSyncHistory,
 } from './syncConfigService';
+import { serializeError, logError } from '../utils/errorUtils';
 
 interface ErpApiItem {
   id_transacao: number;
@@ -315,19 +316,13 @@ export const fetchErpInvoices = async (
     console.log(`✅ Sincronização concluída: ${invoices.length} notas fiscais`);
     return invoices;
   } catch (error) {
-    console.error("❌ Falha na sincronização ERP:", error?.message || String(error));
+    const errorMessage = serializeError(error);
+    logError("Falha na sincronização ERP", error);
 
     if (syncHistoryId) {
-      await failSyncHistory(
-        syncHistoryId,
-        error instanceof Error ? error.message : 'Erro desconhecido'
-      );
+      await failSyncHistory(syncHistoryId, errorMessage);
     }
 
-    if (error instanceof Error) {
-      throw error;
-    }
-
-    throw new Error('Erro desconhecido na sincronização com ERP');
+    throw new Error(errorMessage);
   }
 };

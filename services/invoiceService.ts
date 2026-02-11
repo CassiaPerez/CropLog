@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { Invoice } from '../types';
+import { serializeError, logError } from '../utils/errorUtils';
 
 function createInvoiceHash(invoice: Invoice): string {
   const data = {
@@ -223,8 +224,8 @@ export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
       }))
     }));
   } catch (error) {
-    console.error('❌ Erro ao carregar notas do banco:', error?.message || String(error));
-    throw error;
+    logError('Erro ao carregar notas do banco', error);
+    throw new Error(serializeError(error));
   }
 }
 
@@ -241,7 +242,7 @@ export async function updateInvoiceAssignedStatus(invoiceIds: string | string[],
 
     if (error) throw error;
   } catch (error) {
-    console.error('❌ Erro ao atualizar status da nota:', error?.message || String(error));
-    throw error;
+    logError('Erro ao atualizar status da nota', error);
+    throw new Error(serializeError(error));
   }
 }

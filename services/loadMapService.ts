@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { LoadMap, TimelineEvent } from '../types';
+import { serializeError, logError } from '../utils/errorUtils';
 
 const STATUS_TO_DB: Record<string, string> = {
   'planejamento': 'Planejamento',
@@ -160,8 +161,8 @@ export async function saveLoadMapToDatabase(loadMap: LoadMap): Promise<void> {
 
     console.log(`Mapa ${loadMap.code} salvo com sucesso`);
   } catch (error) {
-    console.error('Erro ao salvar mapa de carga:', error?.message || String(error));
-    throw error;
+    logError('Erro ao salvar mapa de carga', error);
+    throw new Error(serializeError(error));
   }
 }
 
@@ -290,7 +291,7 @@ export async function loadLoadMapsFromDatabase(): Promise<LoadMap[]> {
     console.log(`Retornando ${loadMaps.length} mapas de carga completos`);
     return loadMaps;
   } catch (error) {
-    console.error('Erro ao carregar mapas do banco:', error?.message || String(error));
+    logError('Erro ao carregar mapas do banco', error);
     return [];
   }
 }
@@ -303,8 +304,8 @@ export async function deleteLoadMapFromDatabase(loadMapId: string): Promise<void
       .eq('id', loadMapId);
 
     if (error) {
-      console.error('Erro ao deletar mapa:', error?.message || String(error));
-      throw error;
+      logError('Erro ao deletar mapa', error);
+      throw new Error(serializeError(error));
     }
 
     console.log('Mapa deletado com sucesso');

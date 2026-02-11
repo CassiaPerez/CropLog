@@ -9,6 +9,7 @@ import { fetchErpInvoices, SyncProgress, fetchInvoiceByDocNumber } from './servi
 import { supabase } from './services/supabase';
 import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus } from './services/invoiceService';
 import { saveLoadMapToDatabase, loadLoadMapsFromDatabase, deleteLoadMapFromDatabase } from './services/loadMapService';
+import { serializeError, logError } from './utils/errorUtils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
@@ -251,7 +252,7 @@ function App() {
 
   // --- API Handlers ---
 
-  const handleSyncErp = async (type: 'full' | 'incremental' = 'full') => {
+  const handleSyncErp = async (type?: 'full' | 'incremental') => {
       if (!apiConfig.baseUrl) {
           alert("Configure a URL da API nas configurações.");
           setCurrentView('SETTINGS');
@@ -260,15 +261,17 @@ function App() {
 
       setIsSyncing(true);
       setSyncError(null);
-      setSyncType(type);
       setShowSyncProgress(true);
       setSyncProgress(null);
 
       try {
           console.log('🚀 Iniciando sincronização manual com ERP...');
 
+          const actualType = type || 'incremental';
+          setSyncType(actualType);
+
           const newInvoices = await fetchErpInvoices(apiConfig.baseUrl, apiConfig.token, {
-            syncType: type,
+            syncType: actualType,
             onProgress: (progress: SyncProgress) => {
               setSyncProgress(progress);
             },
@@ -292,8 +295,8 @@ function App() {
           console.log('✨ Sincronização manual concluída!');
 
       } catch (error: any) {
-          const errorMessage = error?.message || String(error) || 'Erro desconhecido ao sincronizar com ERP';
-          console.error('❌ Erro na sincronização:', errorMessage);
+          const errorMessage = serializeError(error);
+          logError('Erro na sincronização', error);
           setSyncError(errorMessage);
           setShowSyncProgress(false);
           alert(`❌ Erro na sincronização:\n${errorMessage}\n\nVerifique o console do navegador (F12) para mais detalhes.`);
@@ -849,12 +852,12 @@ function App() {
            </div>
            <div className="flex gap-4">
                 <button
-                 onClick={handleSyncErp}
+                 onClick={() => handleSyncErp()}
                  disabled={isSyncing}
                  className="bg-white border-2 border-slate-200 text-text-secondary hover:text-primary hover:border-primary px-6 py-5 rounded-2xl font-bold text-lg transition-all flex items-center gap-3"
                >
                  <RefreshCcw size={24} className={isSyncing ? "animate-spin" : ""} />
-                 {isSyncing ? "Sincronizando..." : "Sincronizar ERP"}
+                 {isSyncing ? "Sincronizando..." : "Sincronizar (Incremental)"}
                </button>
                <button
                  disabled={selectedInvoiceIds.size === 0}
