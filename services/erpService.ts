@@ -315,7 +315,7 @@ export const fetchErpInvoices = async (
     console.log(`✅ Sincronização concluída: ${invoices.length} notas fiscais`);
     return invoices;
   } catch (error) {
-    console.error("❌ Falha na sincronização ERP:", error);
+    console.error("❌ Falha na sincronização ERP:", error?.message || String(error));
 
     if (syncHistoryId) {
       await failSyncHistory(

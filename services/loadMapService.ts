@@ -160,7 +160,7 @@ export async function saveLoadMapToDatabase(loadMap: LoadMap): Promise<void> {
 
     console.log(`Mapa ${loadMap.code} salvo com sucesso`);
   } catch (error) {
-    console.error('Erro ao salvar mapa de carga:', error);
+    console.error('Erro ao salvar mapa de carga:', error?.message || String(error));
     throw error;
   }
 }
@@ -290,7 +290,7 @@ export async function loadLoadMapsFromDatabase(): Promise<LoadMap[]> {
     console.log(`Retornando ${loadMaps.length} mapas de carga completos`);
     return loadMaps;
   } catch (error) {
-    console.error('Erro ao carregar mapas do banco:', error);
+    console.error('Erro ao carregar mapas do banco:', error?.message || String(error));
     return [];
   }
 }
@@ -303,7 +303,7 @@ export async function deleteLoadMapFromDatabase(loadMapId: string): Promise<void
       .eq('id', loadMapId);
 
     if (error) {
-      console.error('Erro ao deletar mapa:', error);
+      console.error('Erro ao deletar mapa:', error?.message || String(error));
       throw error;
     }
 

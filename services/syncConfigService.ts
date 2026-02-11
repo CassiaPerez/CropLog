@@ -31,7 +31,7 @@ export const getSyncConfig = async (): Promise<SyncConfig> => {
     .maybeSingle();
 
   if (error) {
-    console.error('Error fetching sync config:', error);
+    console.error('Error fetching sync config:', error?.message || String(error));
     return {
       id: '',
       last_sync_date: null,
@@ -80,7 +80,7 @@ export const updateLastSyncDate = async (date: string): Promise<void> => {
     .eq('id', config.id);
 
   if (error) {
-    console.error('Error updating last sync date:', error);
+    console.error('Error updating last sync date:', error?.message || String(error));
     throw error;
   }
 };
@@ -99,7 +99,7 @@ export const createSyncHistory = async (syncType: 'full' | 'incremental'): Promi
     });
 
   if (error) {
-    console.error('Error creating sync history:', error);
+    console.error('Error creating sync history:', error?.message || String(error));
     throw new Error('Failed to create sync history');
   }
 
@@ -116,7 +116,7 @@ export const updateSyncHistory = async (
     .eq('id', id);
 
   if (error) {
-    console.error('Error updating sync history:', error);
+    console.error('Error updating sync history:', error?.message || String(error));
     throw error;
   }
 };
@@ -150,7 +150,7 @@ export const getRecentSyncHistory = async (limit: number = 10): Promise<SyncHist
     .limit(limit);
 
   if (error) {
-    console.error('Error fetching sync history:', error);
+    console.error('Error fetching sync history:', error?.message || String(error));
     return [];
   }
 

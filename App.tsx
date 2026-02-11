@@ -95,12 +95,12 @@ function App() {
     try {
       const { data, error } = await supabase.from('app_users').select('*').order('name');
       if (error) {
-        console.error('Erro ao carregar usuários:', error);
+        console.error('Erro ao carregar usuários:', error?.message || String(error));
       } else {
         setUsers(data as User[]);
       }
     } catch (err) {
-      console.error('Erro ao buscar usuários:', err);
+      console.error('Erro ao buscar usuários:', err?.message || String(err));
     } finally {
       setIsUsersLoading(false);
     }
@@ -113,7 +113,7 @@ function App() {
       console.log(`Carregadas ${loadedInvoices.length} notas do banco`);
       setInvoices(loadedInvoices);
     } catch (error) {
-      console.error('Erro ao carregar notas do banco:', error);
+      console.error('Erro ao carregar notas do banco:', error?.message || String(error));
     }
   };
 
@@ -141,7 +141,7 @@ function App() {
         }
       }
     } catch (error) {
-      console.error('Erro ao buscar nota:', error);
+      console.error('Erro ao buscar nota:', error?.message || String(error));
       alert(`Erro ao buscar nota: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     } finally {
       setIsSearching(false);
@@ -155,7 +155,7 @@ function App() {
       console.log(`Carregados ${loadedMaps.length} mapas do banco`);
       setLoadMaps(loadedMaps);
     } catch (error) {
-      console.error('Erro ao carregar mapas do banco:', error);
+      console.error('Erro ao carregar mapas do banco:', error?.message || String(error));
     }
   };
 
@@ -168,7 +168,7 @@ function App() {
       const updatedInvoices = await loadInvoicesFromDatabase();
       setInvoices(updatedInvoices);
     } catch (error) {
-      console.error('Erro na sincronização automática:', error);
+      console.error('Erro na sincronização automática:', error?.message || String(error));
     }
   };
 
@@ -292,8 +292,8 @@ function App() {
           console.log('✨ Sincronização manual concluída!');
 
       } catch (error: any) {
-          console.error('❌ Erro na sincronização:', error);
-          const errorMessage = error.message || 'Erro desconhecido ao sincronizar com ERP';
+          const errorMessage = error?.message || String(error) || 'Erro desconhecido ao sincronizar com ERP';
+          console.error('❌ Erro na sincronização:', errorMessage);
           setSyncError(errorMessage);
           setShowSyncProgress(false);
           alert(`❌ Erro na sincronização:\n${errorMessage}\n\nVerifique o console do navegador (F12) para mais detalhes.`);
@@ -332,7 +332,7 @@ function App() {
             if (error) throw error;
             setUsers(users.filter(u => u.id !== userId));
         } catch (error) {
-            console.error("Erro ao deletar usuário:", error);
+            console.error("Erro ao deletar usuário:", error?.message || String(error));
             alert("Erro ao deletar usuário. Verifique a conexão com o banco de dados.");
         }
     }
@@ -366,7 +366,7 @@ function App() {
         setIsUserModalOpen(false);
         setUserFormPassword('');
     } catch (error) {
-        console.error("Erro ao salvar usuário:", error);
+        console.error("Erro ao salvar usuário:", error?.message || String(error));
         alert("Erro ao salvar usuário. Verifique se a tabela 'app_users' existe no Supabase.");
     }
   };
@@ -426,7 +426,7 @@ function App() {
       try {
         await saveLoadMapToDatabase(updatedMap);
       } catch (error) {
-        console.error('Erro ao salvar timeline no banco:', error);
+        console.error('Erro ao salvar timeline no banco:', error?.message || String(error));
       }
     }
   };
@@ -769,7 +769,7 @@ function App() {
         await updateInvoiceAssignedStatus(Array.from(selectedInvoiceIds), true);
         await saveLoadMapToDatabase(newMap);
       } catch (error) {
-        console.error('Erro ao atualizar status das notas:', error);
+        console.error('Erro ao atualizar status das notas:', error?.message || String(error));
       }
 
       setSelectedInvoiceIds(new Set());
@@ -1378,7 +1378,7 @@ function App() {
             await saveLoadMapToDatabase(updatedMap);
             alert('Salvo!');
           } catch (error) {
-            console.error('Erro ao salvar:', error);
+            console.error('Erro ao salvar:', error?.message || String(error));
             alert('Erro ao salvar!');
           }
         }

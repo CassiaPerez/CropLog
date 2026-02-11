@@ -152,7 +152,7 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
 
         successCount++;
       } catch (err) {
-        console.error(`❌ Falha na nota ${invoice.number}:`, err);
+        console.error(`❌ Falha na nota ${invoice.number}:`, err?.message || String(err));
         errorCount++;
       }
     }));
@@ -169,7 +169,7 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
   console.log(`📊 Resumo:`);
   console.log(`  ✅ Salvas/Atualizadas: ${successCount}`);
   console.log(`  ⏭️ Sem mudanças: ${skipped}`);
-  console.log(`  🗑️ Removidas: ${toDelete.length}`);
+  console.log(`  🚫 Canceladas: ${toCancel.length}`);
   console.log(`  ❌ Erros: ${errorCount}`);
   console.log(`  📦 Total processado: ${invoices.length} notas\n`);
 
@@ -223,7 +223,7 @@ export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
       }))
     }));
   } catch (error) {
-    console.error('❌ Erro ao carregar notas do banco:', error);
+    console.error('❌ Erro ao carregar notas do banco:', error?.message || String(error));
     throw error;
   }
 }
@@ -241,7 +241,7 @@ export async function updateInvoiceAssignedStatus(invoiceIds: string | string[],
 
     if (error) throw error;
   } catch (error) {
-    console.error('❌ Erro ao atualizar status da nota:', error);
+    console.error('❌ Erro ao atualizar status da nota:', error?.message || String(error));
     throw error;
   }
 }
