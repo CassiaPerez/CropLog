@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Layout } from './components/Layout';
 import { ProductModal } from './components/ProductModal';
+import { SyncProgressModal } from './components/SyncProgressModal';
 import { CARRIER_LIST } from './constants';
 import { Invoice, LoadMap, ViewState, LoadStatus, User, UserRole } from './types';
 import { createLoadMap, getStatusColor } from './services/loadService';
-import { fetchErpInvoices } from './services/erpService';
+import { fetchErpInvoices, SyncProgress } from './services/erpService';
 import { supabase } from './services/supabase';
 import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus } from './services/invoiceService';
 import { saveLoadMapToDatabase, loadLoadMapsFromDatabase, deleteLoadMapFromDatabase } from './services/loadMapService';
@@ -47,6 +48,9 @@ function App() {
   });
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = useState<{currentPage: number; totalPages: number; processedInvoices: number; percentage: number; estimatedTimeRemaining?: number} | null>(null);
+  const [syncType, setSyncType] = useState<'full' | 'incremental'>('full');
+  const [showSyncProgress, setShowSyncProgress] = useState(false);
 
   // Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -125,7 +129,9 @@ function App() {
 
   const performAutoSync = async (baseUrl: string, token: string) => {
     try {
-      const newInvoices = await fetchErpInvoices(baseUrl, token);
+      const newInvoices = await fetchErpInvoices(baseUrl, token, {
+        syncType: 'incremental',
+      });
       await saveInvoicesToDatabase(newInvoices);
       const updatedInvoices = await loadInvoicesFromDatabase();
       setInvoices(updatedInvoices);
@@ -213,7 +219,7 @@ function App() {
 
   // --- API Handlers ---
 
-  const handleSyncErp = async () => {
+  const handleSyncErp = async (type: 'full' | 'incremental' = 'full') => {
       if (!apiConfig.baseUrl) {
           alert("Configure a URL da API nas configurações.");
           setCurrentView('SETTINGS');
@@ -222,13 +228,22 @@ function App() {
 
       setIsSyncing(true);
       setSyncError(null);
+      setSyncType(type);
+      setShowSyncProgress(true);
+      setSyncProgress(null);
 
       try {
           console.log('🚀 Iniciando sincronização manual com ERP...');
 
-          const newInvoices = await fetchErpInvoices(apiConfig.baseUrl, apiConfig.token);
+          const newInvoices = await fetchErpInvoices(apiConfig.baseUrl, apiConfig.token, {
+            syncType: type,
+            onProgress: (progress: SyncProgress) => {
+              setSyncProgress(progress);
+            },
+          });
 
           if (newInvoices.length === 0) {
+              setShowSyncProgress(false);
               alert('Nenhuma nota fiscal encontrada no ERP.');
               return;
           }
@@ -240,6 +255,7 @@ function App() {
           const updatedInvoices = await loadInvoicesFromDatabase();
           setInvoices(updatedInvoices);
 
+          setShowSyncProgress(false);
           alert(`✅ Sincronização concluída com sucesso!\n${newInvoices.length} notas foram processadas.`);
           console.log('✨ Sincronização manual concluída!');
 
@@ -247,6 +263,7 @@ function App() {
           console.error('❌ Erro na sincronização:', error);
           const errorMessage = error.message || 'Erro desconhecido ao sincronizar com ERP';
           setSyncError(errorMessage);
+          setShowSyncProgress(false);
           alert(`❌ Erro na sincronização:\n${errorMessage}\n\nVerifique o console do navegador (F12) para mais detalhes.`);
       } finally {
           setIsSyncing(false);
@@ -992,20 +1009,34 @@ function App() {
                              </div>
                          </div>
 
-                         <div className="pt-4 flex items-center gap-4">
-                             <button 
+                         <div className="pt-4 space-y-4">
+                             <button
                                 onClick={handleSaveSettings}
-                                className="flex-1 bg-primary text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-primaryLight transition-all flex items-center justify-center gap-3"
+                                className="w-full bg-primary text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-primaryLight transition-all flex items-center justify-center gap-3"
                              >
                                 <Save size={24}/> Salvar Configuração
                              </button>
-                             <button 
-                                onClick={handleSyncErp}
-                                disabled={isSyncing}
-                                className="px-6 py-4 border-2 border-slate-200 text-text-main rounded-2xl font-bold text-lg hover:border-primary hover:text-primary transition-all flex items-center justify-center"
-                             >
-                                <RefreshCcw size={24} className={isSyncing ? "animate-spin" : ""}/>
-                             </button>
+
+                             <div className="grid grid-cols-2 gap-4">
+                               <button
+                                  onClick={() => handleSyncErp('incremental')}
+                                  disabled={isSyncing}
+                                  className="px-6 py-4 bg-blue-50 border-2 border-blue-200 text-blue-700 rounded-2xl font-bold text-lg hover:bg-blue-100 hover:border-blue-300 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                               >
+                                  <RefreshCcw size={20} className={isSyncing ? "animate-spin" : ""}/> Incremental
+                               </button>
+                               <button
+                                  onClick={() => handleSyncErp('full')}
+                                  disabled={isSyncing}
+                                  className="px-6 py-4 bg-purple-50 border-2 border-purple-200 text-purple-700 rounded-2xl font-bold text-lg hover:bg-purple-100 hover:border-purple-300 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                               >
+                                  <RefreshCcw size={20} className={isSyncing ? "animate-spin" : ""}/> Completa
+                               </button>
+                             </div>
+
+                             <p className="text-sm text-text-light pl-2">
+                               Incremental: sincroniza apenas notas novas. Completa: sincroniza todas as notas.
+                             </p>
                          </div>
                          
                          {syncError && (
@@ -1951,20 +1982,31 @@ function App() {
   }
 
   return (
-    <Layout currentView={currentView} onChangeView={setCurrentView} currentUser={currentUser} onLogout={handleLogout}>
-        {currentView === 'DASHBOARD' && <DashboardView />}
-        {currentView === 'INVOICE_SELECT' && <InvoiceSelectionView />}
-        {currentView === 'LOAD_MAPS' && <LoadMapsPlannerView />}
-        {currentView === 'MAP_DETAIL' && <PlanningMapDetailView />}
-        {currentView === 'SEPARATION_LIST' && <SeparationListView />}
-        {currentView === 'SEPARATION_DETAIL' && <SeparationDetailView />}
-        {currentView === 'OPERATION_LIST' && <OperationListView />}
-        {currentView === 'OPERATION_DETAIL' && <OperationDetailView />}
-        {currentView === 'ADMIN_USERS' && <AdminUsersView />}
+    <>
+      <SyncProgressModal
+        isOpen={showSyncProgress}
+        progress={syncProgress}
+        syncType={syncType}
+        onCancel={() => {
+          setShowSyncProgress(false);
+          setIsSyncing(false);
+        }}
+      />
+      <Layout currentView={currentView} onChangeView={setCurrentView} currentUser={currentUser} onLogout={handleLogout}>
+          {currentView === 'DASHBOARD' && <DashboardView />}
+          {currentView === 'INVOICE_SELECT' && <InvoiceSelectionView />}
+          {currentView === 'LOAD_MAPS' && <LoadMapsPlannerView />}
+          {currentView === 'MAP_DETAIL' && <PlanningMapDetailView />}
+          {currentView === 'SEPARATION_LIST' && <SeparationListView />}
+          {currentView === 'SEPARATION_DETAIL' && <SeparationDetailView />}
+          {currentView === 'OPERATION_LIST' && <OperationListView />}
+          {currentView === 'OPERATION_DETAIL' && <OperationDetailView />}
+          {currentView === 'ADMIN_USERS' && <AdminUsersView />}
         {currentView === 'SETTINGS' && <SettingsView />}
         <UserFormModal />
         <ProductModal invoice={viewingInvoice} onClose={() => setViewingInvoice(null)} />
-    </Layout>
+      </Layout>
+    </>
   );
 }
 

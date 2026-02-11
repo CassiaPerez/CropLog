@@ -1,18 +1,10 @@
-// supabase/functions/erp-proxy/index.ts
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-/**
- * CORS “à prova de preflight”
- * - Em DEV: "*" (origens mudam muito, ex. webcontainer)
- * - Em PROD: troque por seu domínio (ex.: https://intranet.grupocropfield.com.br)
- */
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, accept, origin",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
   "Access-Control-Max-Age": "86400",
-  Vary: "Origin",
 };
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -22,6 +14,9 @@ interface ProxyRequestBody {
   method?: HttpMethod;
   headers?: Record<string, string>;
   body?: unknown;
+  page?: number;
+  limit?: number;
+  dateFrom?: string;
 }
 
 function isHttpUrl(raw: string): boolean {
@@ -33,13 +28,33 @@ function isHttpUrl(raw: string): boolean {
   }
 }
 
-serve(async (req) => {
-  // ✅ Preflight (CORS)
+function buildUrlWithParams(baseUrl: string, page?: number, limit?: number, dateFrom?: string): string {
+  try {
+    const url = new URL(baseUrl);
+
+    if (page !== undefined) {
+      url.searchParams.set('page', page.toString());
+    }
+
+    if (limit !== undefined) {
+      url.searchParams.set('limit', limit.toString());
+    }
+
+    if (dateFrom) {
+      url.searchParams.set('dateFrom', dateFrom);
+    }
+
+    return url.toString();
+  } catch {
+    return baseUrl;
+  }
+}
+
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  // Aceitamos somente POST para o proxy (mais seguro)
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Use POST" }), {
       status: 405,
@@ -49,28 +64,30 @@ serve(async (req) => {
 
   try {
     const payload = (await req.json().catch(() => ({}))) as Partial<ProxyRequestBody>;
-    const url = (payload.url ?? "").trim();
+    const baseUrl = (payload.url ?? "").trim();
     const method: HttpMethod = (payload.method ?? "GET") as HttpMethod;
+    const page = payload.page;
+    const limit = payload.limit;
+    const dateFrom = payload.dateFrom;
 
-    if (!url) {
+    if (!baseUrl) {
       return new Response(JSON.stringify({ error: "url is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ✅ Segurança básica: só http/https
-    if (!isHttpUrl(url)) {
+    if (!isHttpUrl(baseUrl)) {
       return new Response(JSON.stringify({ error: "Invalid URL (only http/https)" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Headers base enviados para a API de destino
+    const finalUrl = buildUrlWithParams(baseUrl, page, limit, dateFrom);
+
     const forwardHeaders: Record<string, string> = {
       Accept: "application/json",
-      // útil quando o seu ERP está atrás de ngrok
       "ngrok-skip-browser-warning": "true",
       ...(payload.headers ?? {}),
     };
@@ -81,40 +98,59 @@ serve(async (req) => {
       forwardHeaders["Content-Type"] = forwardHeaders["Content-Type"] ?? "application/json";
     }
 
-    const upstream = await fetch(url, {
-      method,
-      headers: forwardHeaders,
-      body: hasBody ? JSON.stringify(payload.body) : undefined,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const text = await upstream.text();
-
-    // Se upstream falhar, devolve erro com detalhes para debug
-    if (!upstream.ok) {
-      return new Response(
-        JSON.stringify({
-          error: `Upstream returned ${upstream.status}: ${upstream.statusText}`,
-          details: text?.slice(0, 3000),
-        }),
-        {
-          status: upstream.status,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Tenta parsear JSON; se não for, devolve texto
-    let data: unknown;
     try {
-      data = JSON.parse(text);
-    } catch {
-      data = { raw: text };
-    }
+      const upstream = await fetch(finalUrl, {
+        method,
+        headers: forwardHeaders,
+        body: hasBody ? JSON.stringify(payload.body) : undefined,
+        signal: controller.signal,
+      });
 
-    return new Response(JSON.stringify(data), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+      clearTimeout(timeoutId);
+
+      const text = await upstream.text();
+
+      if (!upstream.ok) {
+        return new Response(
+          JSON.stringify({
+            error: `Upstream returned ${upstream.status}: ${upstream.statusText}`,
+            details: text?.slice(0, 3000),
+          }),
+          {
+            status: upstream.status,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      let data: unknown;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { raw: text };
+      }
+
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        return new Response(
+          JSON.stringify({ error: "Request timeout after 30 seconds" }),
+          {
+            status: 504,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+      throw error;
+    }
   } catch (err) {
     return new Response(
       JSON.stringify({
