@@ -33,48 +33,68 @@ function hasInvoiceChanged(newInv: Invoice, oldInv: any): boolean {
   return isValueDiff || isWeightDiff || isDateDiff || isCustomerDiff;
 }
 
-export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void> {
-  if (invoices.length === 0) return;
+export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<{ cancelledCount: number }> {
+  if (invoices.length === 0) return { cancelledCount: 0 };
 
   console.log(`🚀 Iniciando sincronização inteligente de ${invoices.length} notas...`);
   const startTime = performance.now();
 
   const apiInvoiceNumbers = invoices.map(inv => inv.number);
+  const batchSize = 1000;
+  let allExistingInvoices: any[] = [];
 
-  const { data: allInvoices } = await supabase
+  for (let i = 0; i < apiInvoiceNumbers.length; i += batchSize) {
+    const batch = apiInvoiceNumbers.slice(i, i + batchSize);
+    const { data } = await supabase
+      .from('invoices')
+      .select('id, number, total_value, total_weight, issue_date, customer_name, erp_data_hash, is_cancelled')
+      .in('number', batch);
+
+    if (data) {
+      allExistingInvoices.push(...data);
+    }
+  }
+
+  const existingMap = new Map();
+  allExistingInvoices.forEach(inv => existingMap.set(inv.number, inv));
+
+  const { data: unassignedInvoices } = await supabase
     .from('invoices')
-    .select('id, number, total_value, total_weight, issue_date, customer_name, erp_data_hash, is_assigned, is_cancelled');
+    .select('id, number')
+    .eq('is_assigned', false)
+    .eq('is_cancelled', false);
 
-  const toCancel = (allInvoices || []).filter(
-    inv => !apiInvoiceNumbers.includes(inv.number) && !inv.is_assigned && !inv.is_cancelled
+  const toCancel = (unassignedInvoices || []).filter(
+    inv => !apiInvoiceNumbers.includes(inv.number)
   );
+
+  let cancelledCount = 0;
 
   if (toCancel.length > 0) {
     console.log(`🚫 Marcando ${toCancel.length} notas como canceladas...`);
     const idsToCancel = toCancel.map(inv => inv.id);
 
-    const { error: cancelError } = await supabase
-      .from('invoices')
-      .update({
-        is_cancelled: true,
-        last_modified_at: new Date().toISOString()
-      })
-      .in('id', idsToCancel);
+    for (let i = 0; i < idsToCancel.length; i += batchSize) {
+      const batch = idsToCancel.slice(i, i + batchSize);
+      const { error: cancelError } = await supabase
+        .from('invoices')
+        .update({
+          is_cancelled: true,
+          last_modified_at: new Date().toISOString()
+        })
+        .in('id', batch);
 
-    if (cancelError) {
-      console.error('❌ Erro ao marcar notas como canceladas:', cancelError);
-    } else {
-      console.log(`✅ ${toCancel.length} notas marcadas como canceladas`);
+      if (cancelError) {
+        console.error('❌ Erro ao marcar notas como canceladas:', cancelError);
+      } else {
+        cancelledCount += batch.length;
+      }
+    }
+
+    if (cancelledCount > 0) {
+      console.log(`✅ ${cancelledCount} notas marcadas como canceladas`);
     }
   }
-
-  const { data: existingInvoices } = await supabase
-    .from('invoices')
-    .select('id, number, total_value, total_weight, issue_date, customer_name, erp_data_hash, is_cancelled')
-    .in('number', apiInvoiceNumbers);
-
-  const existingMap = new Map();
-  existingInvoices?.forEach(inv => existingMap.set(inv.number, inv));
 
   // 3. Filtrar apenas o que precisa ser salvo
   const invoicesToSave = invoices.filter(invoice => {
@@ -170,13 +190,15 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
   console.log(`📊 Resumo:`);
   console.log(`  ✅ Salvas/Atualizadas: ${successCount}`);
   console.log(`  ⏭️ Sem mudanças: ${skipped}`);
-  console.log(`  🚫 Canceladas: ${toCancel.length}`);
+  console.log(`  🚫 Canceladas: ${cancelledCount}`);
   console.log(`  ❌ Erros: ${errorCount}`);
   console.log(`  📦 Total processado: ${invoices.length} notas\n`);
 
   if (errorCount > 0) {
     throw new Error(`Sincronização concluída com ${errorCount} erro(s)`);
   }
+
+  return { cancelledCount };
 }
 
 export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {

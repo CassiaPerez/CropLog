@@ -285,13 +285,24 @@ function App() {
 
           console.log(`📦 Recebidas ${newInvoices.length} notas do ERP`);
 
-          await saveInvoicesToDatabase(newInvoices);
+          setSyncProgress(prev => prev ? { ...prev, status: 'Salvando no banco de dados...' } : null);
+
+          const { cancelledCount } = await saveInvoicesToDatabase(newInvoices);
+
+          setSyncProgress(prev => prev ? {
+            ...prev,
+            cancelledInvoices: cancelledCount,
+            status: 'Finalizado!'
+          } : null);
 
           const updatedInvoices = await loadInvoicesFromDatabase();
           setInvoices(updatedInvoices);
 
-          setShowSyncProgress(false);
-          alert(`✅ Sincronização concluída com sucesso!\n${newInvoices.length} notas foram processadas.`);
+          setTimeout(() => {
+            setShowSyncProgress(false);
+          }, 2000);
+
+          alert(`✅ Sincronização concluída com sucesso!\n${newInvoices.length} notas processadas${cancelledCount > 0 ? `\n${cancelledCount} notas canceladas` : ''}.`);
           console.log('✨ Sincronização manual concluída!');
 
       } catch (error: any) {
@@ -1089,7 +1100,7 @@ function App() {
                              </div>
 
                              <p className="text-sm text-text-light pl-2">
-                               Incremental: busca apenas as 3 páginas mais recentes (rápido). Completa: busca todas as páginas (lento).
+                               Incremental: para automaticamente ao encontrar notas já sincronizadas (rápido). Completa: sincroniza todas as páginas disponíveis (lento).
                              </p>
                          </div>
                          

@@ -8,6 +8,7 @@ import {
   updateSyncHistory,
 } from './syncConfigService';
 import { serializeError, logError } from '../utils/errorUtils';
+import { supabase } from './supabase';
 
 interface ErpApiItem {
   id_transacao: number;
@@ -62,48 +63,81 @@ export interface SyncProgress {
   processedInvoices: number;
   percentage: number;
   estimatedTimeRemaining?: number;
+  newInvoices?: number;
+  updatedInvoices?: number;
+  unchangedInvoices?: number;
+  cancelledInvoices?: number;
+  status?: string;
 }
 
 export type SyncProgressCallback = (progress: SyncProgress) => void;
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchWithRetry<T>(
+  fetchFn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  let lastError: Error | unknown;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fetchFn();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < maxRetries - 1) {
+        const delayMs = baseDelay * Math.pow(2, attempt);
+        console.warn(`⚠️ Tentativa ${attempt + 1}/${maxRetries} falhou, tentando novamente em ${delayMs}ms...`);
+        await sleep(delayMs);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 const fetchSinglePage = async (
   baseUrl: string,
   page: number
 ): Promise<ErpApiResponse> => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  const edgeFunctionUrl = `${supabaseUrl}/functions/v1/erp-proxy`;
+  return fetchWithRetry(async () => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const edgeFunctionUrl = `${supabaseUrl}/functions/v1/erp-proxy`;
 
-  const response = await fetch(edgeFunctionUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${supabaseAnonKey}`,
-      'apikey': supabaseAnonKey,
-    },
-    body: JSON.stringify({
-      url: baseUrl,
-      page,
-    }),
-  });
+    const response = await fetch(edgeFunctionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'apikey': supabaseAnonKey,
+      },
+      body: JSON.stringify({
+        url: baseUrl,
+        page,
+      }),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    if (response.status === 401) throw new Error("Não autorizado (401). Verifique a configuração do Supabase.");
-    if (response.status === 404) throw new Error("Edge Function não encontrada (404).");
-    if (response.status === 500) throw new Error(`Erro interno na Edge Function: ${errorText}`);
-    throw new Error(`Erro na sincronização (${response.status}): ${errorText}`);
-  }
+    if (!response.ok) {
+      const errorText = await response.text();
+      if (response.status === 401) throw new Error("Não autorizado (401). Verifique a configuração do Supabase.");
+      if (response.status === 404) throw new Error("Edge Function não encontrada (404).");
+      if (response.status === 500) throw new Error(`Erro interno na Edge Function: ${errorText}`);
+      throw new Error(`Erro na sincronização (${response.status}): ${errorText}`);
+    }
 
-  const apiResponse: ErpApiResponse = await response.json();
+    const apiResponse: ErpApiResponse = await response.json();
 
-  if (!apiResponse.data || !Array.isArray(apiResponse.data)) {
-    throw new Error('Resposta da API não contém dados válidos');
-  }
+    if (!apiResponse.data || !Array.isArray(apiResponse.data)) {
+      throw new Error('Resposta da API não contém dados válidos');
+    }
 
-  return apiResponse;
+    return apiResponse;
+  }, 3, 1000);
 };
 
 export const fetchInvoiceByDocNumber = async (
@@ -196,6 +230,39 @@ const processErpItems = (items: ErpApiItem[]): Invoice[] => {
   }));
 };
 
+async function getExistingInvoiceHashes(): Promise<Map<string, { hash: string; lastSync: string }>> {
+  const { data: invoices } = await supabase
+    .from('invoices')
+    .select('number, erp_data_hash, last_synced_at');
+
+  const hashMap = new Map<string, { hash: string; lastSync: string }>();
+  invoices?.forEach(inv => {
+    if (inv.erp_data_hash) {
+      hashMap.set(inv.number, {
+        hash: inv.erp_data_hash,
+        lastSync: inv.last_synced_at || ''
+      });
+    }
+  });
+
+  return hashMap;
+}
+
+function createInvoiceHash(invoice: Invoice): string {
+  const data = {
+    customerName: invoice.customerName,
+    customerCity: invoice.customerCity,
+    totalValue: invoice.totalValue.toFixed(2),
+    totalWeight: invoice.totalWeight.toFixed(3),
+    itemsCount: invoice.items.length,
+    itemsHash: invoice.items
+      .map(i => `${i.sku}:${i.quantity}:${i.weightKg}`)
+      .sort()
+      .join('|')
+  };
+  return btoa(JSON.stringify(data));
+}
+
 export const fetchErpInvoices = async (
   baseUrl: string,
   apiKey: string,
@@ -215,30 +282,41 @@ export const fetchErpInvoices = async (
   console.log('📍 URL do ERP:', baseUrl);
 
   let syncHistoryId: string | null = null;
+  const allInvoices: Invoice[] = [];
+  let stats = {
+    newInvoices: 0,
+    updatedInvoices: 0,
+    unchangedInvoices: 0,
+    cancelledInvoices: 0
+  };
 
   try {
     const config = await getSyncConfig();
     syncHistoryId = await createSyncHistory(syncType);
 
-    console.log('📥 Buscando primeira página para calcular total...');
+    const existingHashes = await getExistingInvoiceHashes();
+    console.log(`📊 ${existingHashes.size} notas já existem no banco`);
+
+    if (onProgress) {
+      onProgress({
+        currentPage: 0,
+        totalPages: 0,
+        processedInvoices: 0,
+        percentage: 0,
+        status: 'Buscando informações da API...',
+        ...stats
+      });
+    }
+
+    console.log('📥 Buscando primeira página...');
     const firstPage = await fetchSinglePage(baseUrl, 1);
 
     const totalRecords = firstPage.total || 0;
     const limitPerPage = firstPage.limit || 100;
     const totalPages = Math.ceil(totalRecords / limitPerPage);
 
-    let pagesToFetch: number;
-    if (maxPages) {
-      pagesToFetch = Math.min(totalPages, maxPages);
-    } else if (syncType === 'incremental') {
-      pagesToFetch = Math.min(totalPages, 3);
-    } else {
-      pagesToFetch = totalPages;
-    }
-
-    console.log(`📊 Total de registros: ${totalRecords}`);
-    console.log(`📄 Total de páginas: ${totalPages}`);
-    console.log(`🎯 Páginas a buscar: ${pagesToFetch} (modo: ${syncType})`);
+    console.log(`📊 Total de registros na API: ${totalRecords}`);
+    console.log(`📄 Total de páginas disponíveis: ${totalPages}`);
 
     if (totalRecords === 0) {
       console.warn('⚠️ Nenhum dado retornado da API ERP');
@@ -246,73 +324,148 @@ export const fetchErpInvoices = async (
       return [];
     }
 
-    const allItems: ErpApiItem[] = [...firstPage.data];
-    let processedInvoices = processErpItems(firstPage.data).length;
+    let pageInvoices = processErpItems(firstPage.data);
+
+    for (const invoice of pageInvoices) {
+      const hash = createInvoiceHash(invoice);
+      const existing = existingHashes.get(invoice.number);
+
+      if (!existing) {
+        stats.newInvoices++;
+      } else if (existing.hash !== hash) {
+        stats.updatedInvoices++;
+      } else {
+        stats.unchangedInvoices++;
+      }
+    }
+
+    allInvoices.push(...pageInvoices);
 
     if (onProgress) {
       onProgress({
         currentPage: 1,
-        totalPages: pagesToFetch,
-        processedInvoices,
-        percentage: (1 / pagesToFetch) * 100,
+        totalPages: totalPages,
+        processedInvoices: pageInvoices.length,
+        percentage: (1 / totalPages) * 100,
+        status: 'Processando páginas...',
+        ...stats
       });
     }
 
     await updateSyncHistory(syncHistoryId, {
       total_pages: 1,
-      total_invoices: processedInvoices,
+      total_invoices: pageInvoices.length,
     });
 
-    if (pagesToFetch > 1) {
-      console.log(`🔄 Buscando páginas 2 a ${pagesToFetch}...`);
+    if (syncType === 'incremental') {
+      console.log('🎯 Modo incremental: buscando até encontrar notas já sincronizadas');
+    }
 
-      for (let page = 2; page <= pagesToFetch; page++) {
-        const startTime = Date.now();
+    let page = 2;
+    let consecutiveUnchanged = 0;
+    const maxConsecutiveUnchanged = syncType === 'incremental' ? 50 : Infinity;
+    const pagesToFetch = maxPages ? Math.min(totalPages, maxPages) : totalPages;
+    const startTime = Date.now();
 
-        try {
-          await delay(config.delay_between_pages_ms);
+    while (page <= pagesToFetch) {
+      try {
+        await delay(config.delay_between_pages_ms);
 
-          const pageData = await fetchSinglePage(baseUrl, page);
-          allItems.push(...pageData.data);
-
-          const pageInvoices = processErpItems(pageData.data).length;
-          processedInvoices += pageInvoices;
-
-          const elapsedTime = Date.now() - startTime;
-          const avgTimePerPage = elapsedTime / page;
-          const remainingPages = pagesToFetch - page;
-          const estimatedTimeRemaining = (avgTimePerPage * remainingPages) / 1000;
-
-          console.log(`✅ Página ${page}/${pagesToFetch} processada (${pageInvoices} notas)`);
-
-          if (onProgress) {
-            onProgress({
-              currentPage: page,
-              totalPages: pagesToFetch,
-              processedInvoices,
-              percentage: (page / pagesToFetch) * 100,
-              estimatedTimeRemaining,
-            });
-          }
-
-          await updateSyncHistory(syncHistoryId, {
-            total_pages: page,
-            total_invoices: processedInvoices,
+        if (onProgress) {
+          onProgress({
+            currentPage: page - 1,
+            totalPages: pagesToFetch,
+            processedInvoices: allInvoices.length,
+            percentage: ((page - 1) / pagesToFetch) * 100,
+            status: `Buscando página ${page}/${pagesToFetch}...`,
+            ...stats
           });
-        } catch (pageError) {
-          console.error(`❌ Erro ao buscar página ${page}:`, pageError);
         }
+
+        const pageData = await fetchSinglePage(baseUrl, page);
+        pageInvoices = processErpItems(pageData.data);
+
+        let pageHasChanges = false;
+        for (const invoice of pageInvoices) {
+          const hash = createInvoiceHash(invoice);
+          const existing = existingHashes.get(invoice.number);
+
+          if (!existing) {
+            stats.newInvoices++;
+            pageHasChanges = true;
+          } else if (existing.hash !== hash) {
+            stats.updatedInvoices++;
+            pageHasChanges = true;
+          } else {
+            stats.unchangedInvoices++;
+          }
+        }
+
+        allInvoices.push(...pageInvoices);
+
+        if (!pageHasChanges && syncType === 'incremental') {
+          consecutiveUnchanged++;
+          console.log(`⏭️ Página ${page}: sem alterações (${consecutiveUnchanged}/${maxConsecutiveUnchanged})`);
+
+          if (consecutiveUnchanged >= maxConsecutiveUnchanged) {
+            console.log(`🎯 Early stopping: ${consecutiveUnchanged} páginas consecutivas sem mudanças`);
+            break;
+          }
+        } else {
+          consecutiveUnchanged = 0;
+          console.log(`✅ Página ${page}/${pagesToFetch}: ${pageInvoices.length} notas processadas`);
+        }
+
+        const elapsedTime = Date.now() - startTime;
+        const avgTimePerPage = elapsedTime / (page - 1);
+        const remainingPages = pagesToFetch - page;
+        const estimatedTimeRemaining = (avgTimePerPage * remainingPages) / 1000;
+
+        if (onProgress) {
+          onProgress({
+            currentPage: page,
+            totalPages: pagesToFetch,
+            processedInvoices: allInvoices.length,
+            percentage: (page / pagesToFetch) * 100,
+            estimatedTimeRemaining,
+            status: 'Processando...',
+            ...stats
+          });
+        }
+
+        await updateSyncHistory(syncHistoryId, {
+          total_pages: page,
+          total_invoices: allInvoices.length,
+        });
+
+        page++;
+      } catch (pageError) {
+        console.error(`❌ Erro ao buscar página ${page}:`, pageError);
+        page++;
       }
     }
 
-    console.log('🔨 Processando todos os itens...');
-    const invoices = processErpItems(allItems);
+    const finalPageCount = page - 1;
+    console.log(`📊 Páginas processadas: ${finalPageCount}/${totalPages}`);
+    console.log(`📦 Total de notas encontradas: ${allInvoices.length}`);
+    console.log(`🆕 Novas: ${stats.newInvoices} | 🔄 Atualizadas: ${stats.updatedInvoices} | ⏭️ Inalteradas: ${stats.unchangedInvoices}`);
 
-    await completeSyncHistory(syncHistoryId, pagesToFetch, invoices.length);
+    if (onProgress) {
+      onProgress({
+        currentPage: finalPageCount,
+        totalPages: finalPageCount,
+        processedInvoices: allInvoices.length,
+        percentage: 100,
+        status: 'Salvando no banco de dados...',
+        ...stats
+      });
+    }
+
+    await completeSyncHistory(syncHistoryId, finalPageCount, allInvoices.length);
     await updateLastSyncDate(new Date().toISOString());
 
-    console.log(`✅ Sincronização concluída: ${invoices.length} notas fiscais`);
-    return invoices;
+    console.log(`✅ Sincronização concluída: ${allInvoices.length} notas fiscais`);
+    return allInvoices;
   } catch (error) {
     const errorMessage = serializeError(error);
     logError("Falha na sincronização ERP", error);
