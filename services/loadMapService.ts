@@ -70,7 +70,7 @@ export async function saveLoadMapToDatabase(loadMap: LoadMap): Promise<void> {
     const dbStatus = toDbStatus(loadMap.status);
 
     // Salvar o mapa de carga
-    const { data: savedMap, error: mapError } = await supabase
+    const { error: mapError } = await supabase
       .from('load_maps')
       .upsert(
         {
@@ -87,16 +87,14 @@ export async function saveLoadMapToDatabase(loadMap: LoadMap): Promise<void> {
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'id' }
-      )
-      .select()
-      .single();
+      );
 
     if (mapError) {
       console.error(`Erro ao salvar mapa ${loadMap.code}:`, mapError);
       throw mapError;
     }
 
-    const persistedMapId = savedMap?.id ?? mapId;
+    const persistedMapId = mapId;
 
     // Remover relações antigas
     await supabase

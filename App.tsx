@@ -356,14 +356,12 @@ function App() {
             if (error) throw error;
             setUsers(users.map(u => u.id === editingUser.id ? { ...u, name: userFormName, role: userFormRole } : u));
         } else {
-            const { data, error } = await supabase
+            const newId = crypto.randomUUID();
+            const { error } = await supabase
                 .from('app_users')
-                .insert([{ name: userFormName, role: userFormRole, password: userFormPassword }])
-                .select();
+                .insert([{ id: newId, name: userFormName, role: userFormRole, password: userFormPassword }]);
             if (error) throw error;
-            if (data && data[0]) {
-                setUsers([...users, data[0] as User]);
-            }
+            setUsers([...users, { id: newId, name: userFormName, role: userFormRole } as User]);
         }
         setIsUserModalOpen(false);
         setUserFormPassword('');
