@@ -107,6 +107,48 @@ const fetchSinglePage = async (
   return apiResponse;
 };
 
+export const fetchInvoiceByDocNumber = async (
+  baseUrl: string,
+  docNumber: number
+): Promise<Invoice[]> => {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const edgeFunctionUrl = `${supabaseUrl}/functions/v1/erp-proxy`;
+
+  const urlWithDocNumber = new URL(baseUrl);
+  urlWithDocNumber.searchParams.delete('page');
+  urlWithDocNumber.searchParams.delete('limit');
+  urlWithDocNumber.searchParams.set('nr_docto', docNumber.toString());
+
+  const response = await fetch(edgeFunctionUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${supabaseAnonKey}`,
+      'apikey': supabaseAnonKey,
+    },
+    body: JSON.stringify({
+      url: urlWithDocNumber.toString(),
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    if (response.status === 401) throw new Error("Não autorizado (401). Verifique a configuração do Supabase.");
+    if (response.status === 404) throw new Error("Edge Function não encontrada (404).");
+    if (response.status === 500) throw new Error(`Erro interno na Edge Function: ${errorText}`);
+    throw new Error(`Erro ao buscar nota fiscal (${response.status}): ${errorText}`);
+  }
+
+  const apiResponse: ErpApiResponse = await response.json();
+
+  if (!apiResponse.data || !Array.isArray(apiResponse.data)) {
+    throw new Error('Resposta da API não contém dados válidos');
+  }
+
+  return processErpItems(apiResponse.data);
+};
+
 const processErpItems = (items: ErpApiItem[]): Invoice[] => {
   const invoicesMap = new Map<number, Invoice>();
 

@@ -5,7 +5,7 @@ import { SyncProgressModal } from './components/SyncProgressModal';
 import { CARRIER_LIST } from './constants';
 import { Invoice, LoadMap, ViewState, LoadStatus, User, UserRole } from './types';
 import { createLoadMap, getStatusColor } from './services/loadService';
-import { fetchErpInvoices, SyncProgress } from './services/erpService';
+import { fetchErpInvoices, SyncProgress, fetchInvoiceByDocNumber } from './services/erpService';
 import { supabase } from './services/supabase';
 import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus } from './services/invoiceService';
 import { saveLoadMapToDatabase, loadLoadMapsFromDatabase, deleteLoadMapFromDatabase } from './services/loadMapService';
@@ -57,6 +57,8 @@ function App() {
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [quickSearchDocNumber, setQuickSearchDocNumber] = useState('');
+  const [isQuickSearching, setIsQuickSearching] = useState(false);
 
   // Selection State
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
@@ -113,6 +115,40 @@ function App() {
       setInvoices(loadedInvoices);
     } catch (error) {
       console.error('Erro ao carregar notas do banco:', error);
+    }
+  };
+
+  const handleQuickSearch = async () => {
+    if (!quickSearchDocNumber.trim()) return;
+
+    const docNumber = parseInt(quickSearchDocNumber.trim());
+    if (isNaN(docNumber)) {
+      alert('Digite um número de documento válido');
+      return;
+    }
+
+    setIsQuickSearching(true);
+    try {
+      console.log(`Buscando nota fiscal ${docNumber}...`);
+      const foundInvoices = await fetchInvoiceByDocNumber(apiConfig.baseUrl, docNumber);
+
+      if (foundInvoices.length === 0) {
+        alert(`Nota fiscal ${docNumber} não encontrada na API`);
+      } else {
+        const existingInvoice = invoices.find(inv => inv.number === foundInvoices[0].number);
+        if (existingInvoice) {
+          setViewingInvoice(existingInvoice);
+        } else {
+          await saveInvoicesToDatabase(foundInvoices);
+          await loadInvoices();
+          setViewingInvoice(foundInvoices[0]);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar nota:', error);
+      alert(`Erro ao buscar nota: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    } finally {
+      setIsQuickSearching(false);
     }
   };
 
@@ -850,6 +886,47 @@ function App() {
                 <AlertCircle size={20} /> Falha na sincronização: {syncError}
              </div>
         )}
+
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-3xl shadow-soft p-6 border-2 border-blue-200/50 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-3">
+                <Search size={24} className="text-blue-600" />
+                <h3 className="text-xl font-bold text-text-main">Busca Rápida por NF</h3>
+              </div>
+              <div className="flex gap-3">
+                <input
+                  type="number"
+                  value={quickSearchDocNumber}
+                  onChange={(e) => setQuickSearchDocNumber(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleQuickSearch()}
+                  placeholder="Digite o número da nota fiscal..."
+                  className="flex-1 px-4 py-3 bg-white rounded-xl border-2 border-blue-200 focus:border-blue-400 outline-none transition-all"
+                />
+                <button
+                  onClick={handleQuickSearch}
+                  disabled={isQuickSearching || !quickSearchDocNumber.trim()}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-3 rounded-xl font-bold transition-all flex items-center gap-2"
+                >
+                  {isQuickSearching ? (
+                    <>
+                      <Loader2 size={20} className="animate-spin" />
+                      Buscando...
+                    </>
+                  ) : (
+                    <>
+                      <Search size={20} />
+                      Buscar
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-sm text-slate-600 mt-2">
+                Busca diretamente na API e exibe os detalhes da nota fiscal específica
+              </p>
+            </div>
+          </div>
+        </div>
 
         <div className="bg-white rounded-3xl shadow-soft p-6 border border-border/50">
           <div className="flex items-center justify-between mb-4">
