@@ -216,12 +216,16 @@ export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
   }
 }
 
-export async function updateInvoiceAssignedStatus(invoiceId: string, isAssigned: boolean): Promise<void> {
+export async function updateInvoiceAssignedStatus(invoiceIds: string | string[], isAssigned: boolean): Promise<void> {
   try {
+    const ids = Array.isArray(invoiceIds) ? invoiceIds : [invoiceIds];
+
+    if (ids.length === 0) return;
+
     const { error } = await supabase
       .from('invoices')
       .update({ is_assigned: isAssigned })
-      .eq('id', invoiceId);
+      .in('id', ids);
 
     if (error) throw error;
   } catch (error) {
