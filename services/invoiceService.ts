@@ -69,7 +69,7 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
 
   const { data: existingInvoices } = await supabase
     .from('invoices')
-    .select('id, number, total_value, total_weight, issue_date, customer_name, erp_data_hash')
+    .select('id, number, total_value, total_weight, issue_date, customer_name, erp_data_hash, is_cancelled')
     .in('number', apiInvoiceNumbers);
 
   const existingMap = new Map();
@@ -106,11 +106,13 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
         const hash = createInvoiceHash(invoice);
         const oldInvoice = existingMap.get(invoice.number);
         const isModified = oldInvoice && hasInvoiceChanged(invoice, oldInvoice);
-        const wasReactivated = oldInvoice && existingMap.get(invoice.number)?.is_cancelled;
+        const wasReactivated = oldInvoice?.is_cancelled;
+        const invoiceId = oldInvoice?.id || crypto.randomUUID();
 
-        const { data: savedInvoice, error: upsertError } = await supabase
+        const { error: upsertError } = await supabase
           .from('invoices')
           .upsert({
+            id: invoiceId,
             number: invoice.number,
             customer_name: invoice.customerName,
             customer_city: invoice.customerCity,
@@ -121,24 +123,20 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<void>
             is_assigned: invoice.isAssigned || false,
             erp_data_hash: hash,
             api_hash: hash,
-            is_modified: isModified,
+            is_modified: isModified ? true : false,
             is_cancelled: false,
             last_modified_at: (isModified || wasReactivated) ? new Date().toISOString() : undefined,
             last_synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
-          }, { onConflict: 'number' })
-          .select('id')
-          .single();
+          }, { onConflict: 'number' });
 
         if (upsertError) throw upsertError;
 
-        // B. Substituição dos Itens (Delete + Insert é mais seguro para consistência)
-        // Primeiro remove itens antigos dessa nota
-        await supabase.from('invoice_items').delete().eq('invoice_id', savedInvoice.id);
+        await supabase.from('invoice_items').delete().eq('invoice_id', invoiceId);
 
         // Insere os novos
         const itemsToInsert = invoice.items.map(item => ({
-          invoice_id: savedInvoice.id,
+          invoice_id: invoiceId,
           sku: item.sku,
           description: item.description,
           quantity: item.quantity,

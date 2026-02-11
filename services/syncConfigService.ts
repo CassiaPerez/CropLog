@@ -45,18 +45,23 @@ export const getSyncConfig = async (): Promise<SyncConfig> => {
   }
 
   if (!data) {
-    const { data: newConfig, error: insertError } = await supabase
-      .from('sync_config')
-      .insert({
-        page_size: 100,
-        delay_between_pages_ms: 500,
-        max_concurrent_pages: 3,
-        request_timeout_ms: 30000,
-      })
-      .select()
-      .single();
+    const newId = crypto.randomUUID();
+    const newConfig: SyncConfig = {
+      id: newId,
+      last_sync_date: null,
+      page_size: 100,
+      delay_between_pages_ms: 500,
+      max_concurrent_pages: 3,
+      request_timeout_ms: 30000,
+      updated_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    };
 
-    if (insertError || !newConfig) {
+    const { error: insertError } = await supabase
+      .from('sync_config')
+      .insert(newConfig);
+
+    if (insertError) {
       throw new Error('Failed to create sync config');
     }
 
@@ -81,23 +86,24 @@ export const updateLastSyncDate = async (date: string): Promise<void> => {
 };
 
 export const createSyncHistory = async (syncType: 'full' | 'incremental'): Promise<string> => {
-  const { data, error } = await supabase
+  const id = crypto.randomUUID();
+
+  const { error } = await supabase
     .from('sync_history')
     .insert({
+      id,
       sync_type: syncType,
       status: 'running',
       total_pages: 0,
       total_invoices: 0,
-    })
-    .select()
-    .single();
+    });
 
-  if (error || !data) {
+  if (error) {
     console.error('Error creating sync history:', error);
     throw new Error('Failed to create sync history');
   }
 
-  return data.id;
+  return id;
 };
 
 export const updateSyncHistory = async (
