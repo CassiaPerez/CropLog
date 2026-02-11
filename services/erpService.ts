@@ -70,8 +70,7 @@ const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 const fetchSinglePage = async (
   baseUrl: string,
-  page: number,
-  dateFrom?: string
+  page: number
 ): Promise<ErpApiResponse> => {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -87,7 +86,6 @@ const fetchSinglePage = async (
     body: JSON.stringify({
       url: baseUrl,
       page,
-      dateFrom,
     }),
   });
 
@@ -222,25 +220,25 @@ export const fetchErpInvoices = async (
     const config = await getSyncConfig();
     syncHistoryId = await createSyncHistory(syncType);
 
-    const dateFrom = syncType === 'incremental' && config.last_sync_date
-      ? config.last_sync_date
-      : undefined;
-
-    if (dateFrom) {
-      console.log('📅 Sincronizando apenas notas desde:', dateFrom);
-    }
-
     console.log('📥 Buscando primeira página para calcular total...');
-    const firstPage = await fetchSinglePage(baseUrl, 1, dateFrom);
+    const firstPage = await fetchSinglePage(baseUrl, 1);
 
     const totalRecords = firstPage.total || 0;
     const limitPerPage = firstPage.limit || 100;
     const totalPages = Math.ceil(totalRecords / limitPerPage);
-    const pagesToFetch = maxPages ? Math.min(totalPages, maxPages) : totalPages;
+
+    let pagesToFetch: number;
+    if (maxPages) {
+      pagesToFetch = Math.min(totalPages, maxPages);
+    } else if (syncType === 'incremental') {
+      pagesToFetch = Math.min(totalPages, 3);
+    } else {
+      pagesToFetch = totalPages;
+    }
 
     console.log(`📊 Total de registros: ${totalRecords}`);
     console.log(`📄 Total de páginas: ${totalPages}`);
-    console.log(`🎯 Páginas a buscar: ${pagesToFetch}`);
+    console.log(`🎯 Páginas a buscar: ${pagesToFetch} (modo: ${syncType})`);
 
     if (totalRecords === 0) {
       console.warn('⚠️ Nenhum dado retornado da API ERP');
@@ -274,7 +272,7 @@ export const fetchErpInvoices = async (
         try {
           await delay(config.delay_between_pages_ms);
 
-          const pageData = await fetchSinglePage(baseUrl, page, dateFrom);
+          const pageData = await fetchSinglePage(baseUrl, page);
           allItems.push(...pageData.data);
 
           const pageInvoices = processErpItems(pageData.data).length;

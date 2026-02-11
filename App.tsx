@@ -857,7 +857,7 @@ function App() {
                  className="bg-white border-2 border-slate-200 text-text-secondary hover:text-primary hover:border-primary px-6 py-5 rounded-2xl font-bold text-lg transition-all flex items-center gap-3"
                >
                  <RefreshCcw size={24} className={isSyncing ? "animate-spin" : ""} />
-                 {isSyncing ? "Sincronizando..." : "Sincronizar (Incremental)"}
+                 {isSyncing ? "Sincronizando..." : "Sincronizar ERP"}
                </button>
                <button
                  disabled={selectedInvoiceIds.size === 0}
@@ -1082,14 +1082,14 @@ function App() {
                                <button
                                   onClick={() => handleSyncErp('full')}
                                   disabled={isSyncing}
-                                  className="px-6 py-4 bg-purple-50 border-2 border-purple-200 text-purple-700 rounded-2xl font-bold text-lg hover:bg-purple-100 hover:border-purple-300 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                  className="px-6 py-4 bg-orange-50 border-2 border-orange-200 text-orange-700 rounded-2xl font-bold text-lg hover:bg-orange-100 hover:border-orange-300 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                                >
                                   <RefreshCcw size={20} className={isSyncing ? "animate-spin" : ""}/> Completa
                                </button>
                              </div>
 
                              <p className="text-sm text-text-light pl-2">
-                               Incremental: sincroniza apenas notas novas. Completa: sincroniza todas as notas.
+                               Incremental: busca apenas as 3 páginas mais recentes (rápido). Completa: busca todas as páginas (lento).
                              </p>
                          </div>
                          

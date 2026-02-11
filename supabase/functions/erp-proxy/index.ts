@@ -15,7 +15,6 @@ interface ProxyRequestBody {
   headers?: Record<string, string>;
   body?: unknown;
   page?: number;
-  dateFrom?: string;
 }
 
 function isHttpUrl(raw: string): boolean {
@@ -27,16 +26,12 @@ function isHttpUrl(raw: string): boolean {
   }
 }
 
-function buildUrlWithParams(baseUrl: string, page?: number, dateFrom?: string): string {
+function buildUrlWithParams(baseUrl: string, page?: number): string {
   try {
     const url = new URL(baseUrl);
 
     if (page !== undefined) {
       url.searchParams.set('page', page.toString());
-    }
-
-    if (dateFrom) {
-      url.searchParams.set('dateFrom', dateFrom);
     }
 
     return url.toString();
@@ -62,7 +57,6 @@ Deno.serve(async (req: Request) => {
     const baseUrl = (payload.url ?? "").trim();
     const method: HttpMethod = (payload.method ?? "GET") as HttpMethod;
     const page = payload.page;
-    const dateFrom = payload.dateFrom;
 
     if (!baseUrl) {
       return new Response(JSON.stringify({ error: "url is required" }), {
@@ -78,7 +72,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const finalUrl = buildUrlWithParams(baseUrl, page, dateFrom);
+    const finalUrl = buildUrlWithParams(baseUrl, page);
 
     const forwardHeaders: Record<string, string> = {
       Accept: "application/json",
