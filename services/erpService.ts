@@ -70,7 +70,6 @@ const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 const fetchSinglePage = async (
   baseUrl: string,
   page: number,
-  limit: number,
   dateFrom?: string
 ): Promise<ErpApiResponse> => {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -87,7 +86,6 @@ const fetchSinglePage = async (
     body: JSON.stringify({
       url: baseUrl,
       page,
-      limit,
       dateFrom,
     }),
   });
@@ -190,10 +188,11 @@ export const fetchErpInvoices = async (
     }
 
     console.log('📥 Buscando primeira página para calcular total...');
-    const firstPage = await fetchSinglePage(baseUrl, 1, config.page_size, dateFrom);
+    const firstPage = await fetchSinglePage(baseUrl, 1, dateFrom);
 
     const totalRecords = firstPage.total || 0;
-    const totalPages = Math.ceil(totalRecords / config.page_size);
+    const limitPerPage = firstPage.limit || 100;
+    const totalPages = Math.ceil(totalRecords / limitPerPage);
     const pagesToFetch = maxPages ? Math.min(totalPages, maxPages) : totalPages;
 
     console.log(`📊 Total de registros: ${totalRecords}`);
@@ -232,7 +231,7 @@ export const fetchErpInvoices = async (
         try {
           await delay(config.delay_between_pages_ms);
 
-          const pageData = await fetchSinglePage(baseUrl, page, config.page_size, dateFrom);
+          const pageData = await fetchSinglePage(baseUrl, page, dateFrom);
           allItems.push(...pageData.data);
 
           const pageInvoices = processErpItems(pageData.data).length;
