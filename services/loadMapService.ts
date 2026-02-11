@@ -1,49 +1,17 @@
 import { supabase } from './supabase';
 import { LoadMap, TimelineEvent } from '../types';
 
-/**
- * O banco (Supabase/Postgres) valida `status` com CHECK constraint.
- * Este normalizador converte status da UI (PT-BR, enum, etc.) para um código consistente no DB.
- *
- * Ajuste os códigos retornados aqui caso sua constraint use outra lista.
- */
 const STATUS_TO_DB: Record<string, string> = {
-  // UI PT-BR
-  'planejamento': 'planning',
-  'pronto_para_separacao': 'ready_for_separation',
-  'separacao': 'separation',
-  'em_separacao': 'in_separation',
-  'separado': 'separated',
-  'separado_com_divergencia': 'separated_with_divergence',
-  'pronto': 'ready',
-  'coletado': 'collected',
-  'em_transito': 'in_transit',
-  'entregue': 'delivered',
-
-  // chaves/valores já em formato DB (pass-through)
-  'planning': 'planning',
-  'ready_for_separation': 'ready_for_separation',
-  'separation': 'separation',
-  'in_separation': 'in_separation',
-  'separated': 'separated',
-  'separated_with_divergence': 'separated_with_divergence',
-  'ready': 'ready',
-  'collected': 'collected',
-  'in_transit': 'in_transit',
-  'delivered': 'delivered',
-};
-
-const DB_TO_STATUS_UI: Record<string, string> = {
-  planning: 'Planejamento',
-  ready_for_separation: 'Pronto para Separação',
-  separation: 'Separação',
-  in_separation: 'Em Separação',
-  separated: 'Separado',
-  separated_with_divergence: 'Separado com Divergência',
-  ready: 'Pronto',
-  collected: 'Coletado',
-  in_transit: 'Em Trânsito',
-  delivered: 'Entregue',
+  'planejamento': 'Planejamento',
+  'aguardando_separacao': 'Aguardando Separação',
+  'em_separacao': 'Em Separação',
+  'separado': 'Separado',
+  'separado_com_divergencia': 'Separado com Divergência',
+  'pronto': 'Pronto',
+  'coletado': 'Coletado',
+  'em_transito': 'Em Trânsito',
+  'entregue': 'Entregue',
+  'cancelado': 'Cancelado',
 };
 
 function stripAccents(input: string): string {
@@ -65,12 +33,12 @@ function toKey(input: unknown): string {
 
 function toDbStatus(status: unknown): string {
   const key = toKey(status);
-  return STATUS_TO_DB[key] ?? key; // fallback: tenta usar o próprio valor normalizado
+  return STATUS_TO_DB[key] ?? String(status ?? '');
 }
 
-function fromDbStatus(status: unknown): any {
-  const key = toKey(status);
-  return DB_TO_STATUS_UI[key] ?? status;
+function fromDbStatus(status: unknown): string {
+  const raw = String(status ?? '');
+  return raw;
 }
 
 function isUuid(value: string): boolean {
