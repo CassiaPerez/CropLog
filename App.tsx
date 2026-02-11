@@ -37,6 +37,7 @@ function App() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userFormName, setUserFormName] = useState('');
   const [userFormRole, setUserFormRole] = useState<UserRole>('STATUS_OPERACAO');
+  const [userFormPassword, setUserFormPassword] = useState('');
 
   // Settings State
   const [apiConfig, setApiConfig] = useState({
@@ -263,6 +264,7 @@ function App() {
     setEditingUser(null);
     setUserFormName('');
     setUserFormRole('STATUS_OPERACAO');
+    setUserFormPassword('');
     setIsUserModalOpen(true);
   };
 
@@ -270,6 +272,7 @@ function App() {
       setEditingUser(user);
       setUserFormName(user.name);
       setUserFormRole(user.role);
+      setUserFormPassword('');
       setIsUserModalOpen(true);
   };
 
@@ -289,19 +292,24 @@ function App() {
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userFormName.trim()) return;
+    if (!editingUser && !userFormPassword.trim()) return;
 
     try {
         if (editingUser) {
+            const updateData: Record<string, string> = { name: userFormName, role: userFormRole };
+            if (userFormPassword.trim()) {
+                updateData.password = userFormPassword;
+            }
             const { error } = await supabase
                 .from('app_users')
-                .update({ name: userFormName, role: userFormRole })
+                .update(updateData)
                 .eq('id', editingUser.id);
             if (error) throw error;
             setUsers(users.map(u => u.id === editingUser.id ? { ...u, name: userFormName, role: userFormRole } : u));
         } else {
             const { data, error } = await supabase
                 .from('app_users')
-                .insert([{ name: userFormName, role: userFormRole }])
+                .insert([{ name: userFormName, role: userFormRole, password: userFormPassword }])
                 .select();
             if (error) throw error;
             if (data && data[0]) {
@@ -309,6 +317,7 @@ function App() {
             }
         }
         setIsUserModalOpen(false);
+        setUserFormPassword('');
     } catch (error) {
         console.error("Erro ao salvar usuário:", error);
         alert("Erro ao salvar usuário. Verifique se a tabela 'app_users' existe no Supabase.");
@@ -389,12 +398,12 @@ function App() {
         setIsLoading(true);
 
         setTimeout(async () => {
-            const foundUser = users.find(u => 
-                u.name.toLowerCase().includes(email.toLowerCase()) || 
+            const foundUser = users.find(u =>
+                u.name.toLowerCase().includes(email.toLowerCase()) ||
                 u.role.toLowerCase() === email.toLowerCase()
             );
 
-            if (foundUser && password.length > 0) {
+            if (foundUser && foundUser.password === password) {
                 setCurrentUser(foundUser);
                 switch (foundUser.role) {
                     case 'ADMIN':
@@ -1900,6 +1909,20 @@ function App() {
                             {userFormRole === 'SEPARACAO' && 'Acesso restrito à lista de separação e conferência de itens.'}
                             {userFormRole === 'STATUS_OPERACAO' && 'Acesso restrito ao monitoramento de entregas e atualização de status.'}
                         </p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-base font-bold text-text-secondary uppercase tracking-wide">
+                            Senha {editingUser && <span className="text-text-light font-normal normal-case">(deixe em branco para manter)</span>}
+                        </label>
+                        <input
+                            type="password"
+                            value={userFormPassword}
+                            onChange={e => setUserFormPassword(e.target.value)}
+                            className="w-full p-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium text-text-main outline-none transition-all"
+                            placeholder={editingUser ? '••••••••' : 'Digite a senha'}
+                            required={!editingUser}
+                        />
                     </div>
 
                     <div className="pt-4 flex justify-end gap-4">
