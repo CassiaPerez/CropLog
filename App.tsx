@@ -665,6 +665,14 @@ function App() {
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
+    const handleEmailChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+      setEmail(e.target.value);
+    }, []);
+
+    const handlePasswordChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+      setPassword(e.target.value);
+    }, []);
+
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -747,10 +755,10 @@ function App() {
                             <div className="space-y-3">
                                 <label className="text-base font-bold text-text-main block">Usuário</label>
                                 <div className="relative group">
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
+                                        onChange={handleEmailChange}
                                         className="block w-full px-6 py-5 rounded-2xl bg-background border-2 border-transparent focus:border-primary/20 focus:bg-white text-xl text-text-main placeholder:text-text-light font-medium outline-none transition-all"
                                         placeholder="ex: admin"
                                         required
@@ -766,10 +774,10 @@ function App() {
                                     <label className="text-base font-bold text-text-main">Senha</label>
                                 </div>
                                 <div className="relative group">
-                                    <input 
-                                        type="password" 
+                                    <input
+                                        type="password"
                                         value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
+                                        onChange={handlePasswordChange}
                                         className="block w-full px-6 py-5 rounded-2xl bg-background border-2 border-transparent focus:border-primary/20 focus:bg-white text-xl text-text-main placeholder:text-text-light font-medium outline-none transition-all"
                                         placeholder="••••••••"
                                         required
@@ -1570,6 +1578,42 @@ function App() {
     const [vehiclePlate, setVehiclePlate] = useState(map.vehiclePlate || '');
     const [googleMapsLink, setGoogleMapsLink] = useState(map.googleMapsLink || '');
 
+    // Autocomplete State
+    const [carrierSuggestions, setCarrierSuggestions] = useState<string[]>([]);
+    const [showCarrierSuggestions, setShowCarrierSuggestions] = useState(false);
+
+    const handleCarrierChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setCarrierName(value);
+        if (value.length > 0) {
+            const filtered = CARRIER_LIST.filter(c => c.toLowerCase().includes(value.toLowerCase()));
+            setCarrierSuggestions(filtered);
+            setShowCarrierSuggestions(true);
+        } else {
+            setShowCarrierSuggestions(false);
+        }
+    }, []);
+
+    const handleVehiclePlateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        setVehiclePlate(e.target.value);
+    }, []);
+
+    const handleSourceCityChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        setSourceCity(e.target.value);
+    }, []);
+
+    const handleRouteChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        setRoute(e.target.value);
+    }, []);
+
+    const handleGoogleMapsLinkChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        setGoogleMapsLink(e.target.value);
+    }, []);
+
+    const handleNotesChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setNotes(e.target.value);
+    }, []);
+
     // Calculated stats
     const totalValue = map.invoices.reduce((acc, i) => acc + i.totalValue, 0);
     const totalWeight = map.invoices.reduce((acc, i) => acc + i.totalWeight, 0);
@@ -1581,29 +1625,13 @@ function App() {
             // Encode the parameters for the URL
             const origin = encodeURIComponent(sourceCity);
             const destination = encodeURIComponent(route);
-            
+
             // Standard Google Maps Directory Link
             // https://www.google.com/maps/dir/?api=1&origin={origin}&destination={destination}
             const newLink = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
             setGoogleMapsLink(newLink);
         }
     }, [sourceCity, route]);
-
-    // Autocomplete State
-    const [carrierSuggestions, setCarrierSuggestions] = useState<string[]>([]);
-    const [showCarrierSuggestions, setShowCarrierSuggestions] = useState(false);
-
-    const handleCarrierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value;
-        setCarrierName(value);
-        if (value.length > 0) {
-            const filtered = CARRIER_LIST.filter(c => c.toLowerCase().includes(value.toLowerCase()));
-            setCarrierSuggestions(filtered);
-            setShowCarrierSuggestions(true);
-        } else {
-            setShowCarrierSuggestions(false);
-        }
-    };
 
     const handleSelectCarrier = (name: string) => {
         setCarrierName(name);
@@ -1780,23 +1808,23 @@ function App() {
                  </div>
                  <div className="space-y-3">
                      <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">Placa</label>
-                     <input value={vehiclePlate} onChange={e => setVehiclePlate(e.target.value)} className="w-full p-5 bg-white rounded-2xl border-2 border-transparent focus:border-primary/20 text-xl font-medium text-text-main outline-none shadow-soft" placeholder="ABC-1234" />
+                     <input value={vehiclePlate} onChange={handleVehiclePlateChange} className="w-full p-5 bg-white rounded-2xl border-2 border-transparent focus:border-primary/20 text-xl font-medium text-text-main outline-none shadow-soft" placeholder="ABC-1234" />
                  </div>
                  <div className="space-y-3">
                      <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">Cidade de Origem</label>
-                     <input value={sourceCity} onChange={e => setSourceCity(e.target.value)} className="w-full p-5 bg-white rounded-2xl border-2 border-transparent focus:border-primary/20 text-xl font-medium text-text-main outline-none shadow-soft" placeholder="Ex: São Paulo" />
+                     <input value={sourceCity} onChange={handleSourceCityChange} className="w-full p-5 bg-white rounded-2xl border-2 border-transparent focus:border-primary/20 text-xl font-medium text-text-main outline-none shadow-soft" placeholder="Ex: São Paulo" />
                  </div>
                  <div className="space-y-3">
                      <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">Rota / Destino</label>
-                     <input value={route} onChange={e => setRoute(e.target.value)} className="w-full p-5 bg-white rounded-2xl border-2 border-transparent focus:border-primary/20 text-xl font-medium text-text-main outline-none shadow-soft" placeholder="Ex: Rio de Janeiro" />
+                     <input value={route} onChange={handleRouteChange} className="w-full p-5 bg-white rounded-2xl border-2 border-transparent focus:border-primary/20 text-xl font-medium text-text-main outline-none shadow-soft" placeholder="Ex: Rio de Janeiro" />
                  </div>
                  <div className="space-y-3 md:col-span-2">
                      <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">Link Google Maps (Automático)</label>
-                     <input value={googleMapsLink} onChange={e => setGoogleMapsLink(e.target.value)} className="w-full p-5 bg-slate-50 rounded-2xl border-2 border-slate-200 text-xl font-medium text-text-main outline-none shadow-inner" placeholder="Será gerado automaticamente..." />
+                     <input value={googleMapsLink} onChange={handleGoogleMapsLinkChange} className="w-full p-5 bg-slate-50 rounded-2xl border-2 border-slate-200 text-xl font-medium text-text-main outline-none shadow-inner" placeholder="Será gerado automaticamente..." />
                  </div>
                   <div className="space-y-3 md:col-span-2">
                      <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">Notas</label>
-                     <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-5 bg-white rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium text-text-main outline-none shadow-soft min-h-[140px]" placeholder="Observações..." />
+                     <textarea value={notes} onChange={handleNotesChange} className="w-full p-5 bg-white rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium text-text-main outline-none shadow-soft min-h-[140px]" placeholder="Observações..." />
                  </div>
             </div>
 
