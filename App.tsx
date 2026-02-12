@@ -950,8 +950,8 @@ function App() {
     );
   };
 
-  const InvoiceSelectionView = () => {
-    const availableInvoices = useMemo(() => {
+  const InvoiceSelectionView = useMemo(() => {
+    const availableInvoices = (() => {
       let filtered = invoices.filter(inv => !inv.isAssigned);
 
       if (searchTerm) {
@@ -983,16 +983,16 @@ function App() {
       }
 
       return filtered;
-    }, [invoices, searchTerm, filterStartDate, filterEndDate]);
+    })();
 
-    const toggleInvoice = useCallback((id: string) => {
+    const toggleInvoice = (id: string) => {
       const next = new Set(selectedInvoiceIds);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       setSelectedInvoiceIds(next);
-    }, [selectedInvoiceIds]);
+    };
 
-    const handleCreateMap = useCallback(async () => {
+    const handleCreateMap = async () => {
       if (selectedInvoiceIds.size === 0) return;
       const selectedInvs = invoices.filter(inv => selectedInvoiceIds.has(inv.id));
       const newMap = createLoadMap(selectedInvs);
@@ -1009,9 +1009,9 @@ function App() {
       setSelectedInvoiceIds(new Set());
       setSelectedMapId(newMap.id);
       setCurrentView('MAP_DETAIL');
-    }, [selectedInvoiceIds, invoices]);
+    };
 
-    const handleDownloadPickingList = useCallback(() => {
+    const handleDownloadPickingList = () => {
       if (selectedInvoiceIds.size === 0) return;
 
       const selectedInvs = invoices.filter(inv => selectedInvoiceIds.has(inv.id));
@@ -1066,13 +1066,13 @@ function App() {
       });
 
       doc.save(`lista-separacao-${new Date().toISOString().split('T')[0]}.pdf`);
-    }, [selectedInvoiceIds, invoices]);
+    };
 
-    const clearFilters = useCallback(() => {
+    const clearFilters = () => {
       setSearchTerm('');
       setFilterStartDate('');
       setFilterEndDate('');
-    }, []);
+    };
 
     return (
       <div className="space-y-8 animate-in fade-in duration-500">
@@ -1245,7 +1245,7 @@ function App() {
         </div>
       </div>
     );
-  };
+  }, [invoices, searchTerm, filterStartDate, filterEndDate, selectedInvoiceIds, showFilters, isSearching, isSyncing, syncError, handleSearchTermChange, handleSearchByDocNumber, handleSyncErp, handleFilterStartDateChange, handleFilterEndDateChange, setViewingInvoice, setShowFilters, setSelectedInvoiceIds, setLoadMaps, setInvoices, setSelectedMapId, setCurrentView]);
 
   const SettingsView = () => {
     return (
@@ -2334,7 +2334,7 @@ function App() {
       />
       <Layout currentView={currentView} onChangeView={setCurrentView} currentUser={currentUser} onLogout={handleLogout}>
           {currentView === 'DASHBOARD' && <DashboardView />}
-          {currentView === 'INVOICE_SELECT' && <InvoiceSelectionView />}
+          {currentView === 'INVOICE_SELECT' && InvoiceSelectionView}
           {currentView === 'LOAD_MAPS' && <LoadMapsPlannerView />}
           {currentView === 'MAP_DETAIL' && <PlanningMapDetailView />}
           {currentView === 'SEPARATION_LIST' && <SeparationListView />}
