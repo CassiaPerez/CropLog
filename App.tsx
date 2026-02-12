@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Layout } from './components/Layout';
 import { ProductModal } from './components/ProductModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
+import { ApiConfigPanel } from './components/ApiConfigPanel';
 import { CARRIER_LIST } from './constants';
 import { Invoice, LoadMap, ViewState, LoadStatus, User, UserRole } from './types';
 import { createLoadMap, getStatusColor } from './services/loadService';
@@ -10,6 +11,7 @@ import { supabase } from './services/supabase';
 import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus } from './services/invoiceService';
 import { saveLoadMapToDatabase, loadLoadMapsFromDatabase, deleteLoadMapFromDatabase } from './services/loadMapService';
 import { serializeError, logError } from './utils/errorUtils';
+import { getActiveConfig, ApiConfig } from './services/apiConfigService';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
@@ -42,11 +44,7 @@ function App() {
   const [userFormPassword, setUserFormPassword] = useState('');
 
   // Settings State
-  const [apiConfig, setApiConfig] = useState({
-      baseUrl: 'https://arabella-pulverable-davon.ngrok-free.dev/api/Faturamento_Backlog_Wonder?nome_fixo=Faturamento_Backlog_Wonder&page=1&limit=1000&format=json&api_key=a4d8c7f12e3b4c9a9f6e9e2a1b4d7c8f2a3e6d1f8b9c0a2e5f7a8d9c3e4b',
-      token: 'a4d8c7f12e3b4c9a9f6e9e2a1b4d7c8f2a3e6d1f8b9c0a2e5f7a8d9c3e4b',
-      isActive: false
-  });
+  const [activeApiConfig, setActiveApiConfig] = useState<ApiConfig | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState<{currentPage: number; totalPages: number; processedInvoices: number; percentage: number; estimatedTimeRemaining?: number} | null>(null);
@@ -71,25 +69,30 @@ function App() {
     fetchUsers();
     loadInvoices();
     loadLoadMaps();
-    const savedConfig = localStorage.getItem('erp_config');
-    if (savedConfig) {
-        const config = JSON.parse(savedConfig);
-        setApiConfig(config);
-        if (config.baseUrl && config.isActive) {
-          performAutoSync(config.baseUrl, config.token);
-        }
-    }
+    loadApiConfig();
   }, []);
 
   useEffect(() => {
-    if (!apiConfig.baseUrl || !apiConfig.isActive) return;
+    if (!activeApiConfig?.base_url || !activeApiConfig?.auto_sync_enabled) return;
 
+    performAutoSync(activeApiConfig.base_url, activeApiConfig.api_key || '');
+
+    const intervalMs = (activeApiConfig.sync_interval_minutes || 5) * 60 * 1000;
     const intervalId = setInterval(() => {
-      performAutoSync(apiConfig.baseUrl, apiConfig.token);
-    }, 5 * 60 * 1000);
+      performAutoSync(activeApiConfig.base_url, activeApiConfig.api_key || '');
+    }, intervalMs);
 
     return () => clearInterval(intervalId);
-  }, [apiConfig.baseUrl, apiConfig.token, apiConfig.isActive]);
+  }, [activeApiConfig?.base_url, activeApiConfig?.api_key, activeApiConfig?.auto_sync_enabled, activeApiConfig?.sync_interval_minutes]);
+
+  const loadApiConfig = async () => {
+    try {
+      const config = await getActiveConfig();
+      setActiveApiConfig(config);
+    } catch (error) {
+      console.error('Erro ao carregar configuração da API:', error);
+    }
+  };
 
   const fetchUsers = async () => {
     setIsUsersLoading(true);
@@ -124,10 +127,16 @@ function App() {
     const docNumber = parseInt(searchTerm.trim());
     if (isNaN(docNumber)) return;
 
+    if (!activeApiConfig?.base_url) {
+      alert("Configure a API nas configurações antes de buscar notas fiscais.");
+      setCurrentView('SETTINGS');
+      return;
+    }
+
     setIsSearching(true);
     try {
       console.log(`Buscando nota fiscal ${docNumber} na API...`);
-      const foundInvoices = await fetchInvoiceByDocNumber(apiConfig.baseUrl, docNumber);
+      const foundInvoices = await fetchInvoiceByDocNumber(activeApiConfig.base_url, docNumber);
 
       if (foundInvoices.length === 0) {
         alert(`Nota fiscal ${docNumber} não encontrada na API`);
@@ -253,7 +262,7 @@ function App() {
   // --- API Handlers ---
 
   const handleSyncErp = async (type?: 'full' | 'incremental') => {
-      if (!apiConfig.baseUrl) {
+      if (!activeApiConfig?.base_url) {
           alert("Configure a URL da API nas configurações.");
           setCurrentView('SETTINGS');
           return;
@@ -270,7 +279,7 @@ function App() {
           const actualType = type || 'incremental';
           setSyncType(actualType);
 
-          const newInvoices = await fetchErpInvoices(apiConfig.baseUrl, apiConfig.token, {
+          const newInvoices = await fetchErpInvoices(activeApiConfig.base_url, activeApiConfig.api_key || '', {
             syncType: actualType,
             onProgress: (progress: SyncProgress) => {
               setSyncProgress(progress);
@@ -316,9 +325,9 @@ function App() {
       }
   };
 
-  const handleSaveSettings = () => {
-      localStorage.setItem('erp_config', JSON.stringify(apiConfig));
-      alert("Configurações salvas com sucesso!");
+  const handleConfigSaved = async () => {
+      await loadApiConfig();
+      alert("Configuração salva com sucesso!");
   };
 
   // --- User Management Handlers ---
@@ -1028,7 +1037,6 @@ function App() {
   };
 
   const SettingsView = () => {
-    // ... (no changes needed)
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             <div className="pb-6 border-b border-border">
@@ -1037,89 +1045,50 @@ function App() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* API ERP Section */}
                 <div className="bg-white rounded-3xl shadow-soft p-10 border border-border/50">
                      <div className="flex items-center gap-4 mb-8">
                          <div className="p-4 bg-primary/5 rounded-2xl text-primary"><Database size={32}/></div>
                          <h2 className="text-2xl font-black text-text-main">Integração ERP</h2>
                      </div>
 
-                     <div className="space-y-6">
-                         <div className="space-y-2">
-                             <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">URL da API ERP</label>
-                             <div className="relative">
-                                 <input
-                                    value={apiConfig.baseUrl}
-                                    onChange={e => setApiConfig({...apiConfig, baseUrl: e.target.value})}
-                                    type="text"
-                                    className="w-full pl-14 pr-4 py-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium outline-none transition-all"
-                                    placeholder="https://api.erp.com/api/Faturamento_Backlog_Wonder?..."
-                                 />
-                                 <Globe className="absolute left-5 top-1/2 -translate-y-1/2 text-text-light" size={24} />
-                             </div>
-                             <p className="text-sm text-text-light pl-2">URL completa da API para buscar notas fiscais do ERP.</p>
-                         </div>
+                     <ApiConfigPanel onConfigSaved={handleConfigSaved} />
 
-                         <div className="space-y-2">
-                             <label className="text-lg font-bold text-text-secondary uppercase tracking-wide">API Key</label>
-                             <div className="relative">
-                                 <input
-                                    value={apiConfig.token}
-                                    onChange={e => setApiConfig({...apiConfig, token: e.target.value})}
-                                    type="password"
-                                    className="w-full pl-14 pr-4 py-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium outline-none transition-all"
-                                    placeholder="a4d8c7f12e3b4c9a9f6e9e2a1b4d7c8f..."
-                                 />
-                                 <Key className="absolute left-5 top-1/2 -translate-y-1/2 text-text-light" size={24} />
-                             </div>
-                         </div>
-
-                         <div className="pt-4 space-y-4">
-                             <button
-                                onClick={handleSaveSettings}
-                                className="w-full bg-primary text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-primaryLight transition-all flex items-center justify-center gap-3"
-                             >
-                                <Save size={24}/> Salvar Configuração
-                             </button>
-
-                             <div className="grid grid-cols-2 gap-4">
-                               <button
-                                  onClick={() => handleSyncErp('incremental')}
-                                  disabled={isSyncing}
-                                  className="px-6 py-4 bg-blue-50 border-2 border-blue-200 text-blue-700 rounded-2xl font-bold text-lg hover:bg-blue-100 hover:border-blue-300 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                               >
-                                  <RefreshCcw size={20} className={isSyncing ? "animate-spin" : ""}/> Incremental
-                               </button>
-                               <button
-                                  onClick={() => handleSyncErp('full')}
-                                  disabled={isSyncing}
-                                  className="px-6 py-4 bg-orange-50 border-2 border-orange-200 text-orange-700 rounded-2xl font-bold text-lg hover:bg-orange-100 hover:border-orange-300 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                               >
-                                  <RefreshCcw size={20} className={isSyncing ? "animate-spin" : ""}/> Completa
-                               </button>
-                             </div>
-
-                             <p className="text-sm text-text-light pl-2">
-                               Incremental: para automaticamente ao encontrar notas já sincronizadas (rápido). Completa: sincroniza todas as páginas disponíveis (lento).
-                             </p>
-                         </div>
-                         
-                         {syncError && (
-                             <div className="p-4 bg-red-50 text-red-600 font-bold rounded-xl flex items-center gap-3">
-                                <AlertTriangle size={20} /> {syncError}
-                             </div>
-                         )}
+                     <div className="mt-8 pt-8 border-t border-border">
+                       <h3 className="text-lg font-bold text-text-secondary uppercase tracking-wide mb-4">Sincronização Manual</h3>
+                       <div className="grid grid-cols-2 gap-4">
+                         <button
+                            onClick={() => handleSyncErp('incremental')}
+                            disabled={isSyncing}
+                            className="px-6 py-4 bg-blue-50 border-2 border-blue-200 text-blue-700 rounded-2xl font-bold text-lg hover:bg-blue-100 hover:border-blue-300 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                         >
+                            <RefreshCcw size={20} className={isSyncing ? "animate-spin" : ""}/> Incremental
+                         </button>
+                         <button
+                            onClick={() => handleSyncErp('full')}
+                            disabled={isSyncing}
+                            className="px-6 py-4 bg-orange-50 border-2 border-orange-200 text-orange-700 rounded-2xl font-bold text-lg hover:bg-orange-100 hover:border-orange-300 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                         >
+                            <RefreshCcw size={20} className={isSyncing ? "animate-spin" : ""}/> Completa
+                         </button>
+                       </div>
+                       <p className="text-sm text-text-light pl-2 mt-4">
+                         Incremental: para automaticamente ao encontrar notas já sincronizadas (rápido). Completa: sincroniza todas as páginas disponíveis (lento).
+                       </p>
+                       {syncError && (
+                           <div className="p-4 bg-red-50 text-red-600 font-bold rounded-xl flex items-center gap-3 mt-4">
+                              <AlertTriangle size={20} /> {syncError}
+                           </div>
+                       )}
                      </div>
                 </div>
 
-                {/* System Status Section */}
                 <div className="space-y-8">
                      <div className="bg-white rounded-3xl shadow-soft p-10 border border-border/50">
                          <div className="flex items-center gap-4 mb-6">
                              <div className="p-4 bg-emerald-50 rounded-2xl text-emerald-600"><Server size={32}/></div>
                              <h2 className="text-2xl font-black text-text-main">Status do Sistema</h2>
                          </div>
-                         
+
                          <div className="space-y-4">
                              <div className="flex justify-between items-center p-4 bg-background rounded-2xl">
                                  <span className="font-bold text-text-secondary">Conexão Banco de Dados</span>
@@ -1127,7 +1096,7 @@ function App() {
                              </div>
                              <div className="flex justify-between items-center p-4 bg-background rounded-2xl">
                                  <span className="font-bold text-text-secondary">Versão do Cliente</span>
-                                 <span className="font-mono font-bold text-text-main">v2.4.0</span>
+                                 <span className="font-mono font-bold text-text-main">v2.5.0</span>
                              </div>
                              <div className="flex justify-between items-center p-4 bg-background rounded-2xl">
                                  <span className="font-bold text-text-secondary">Ambiente</span>
