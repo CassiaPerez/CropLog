@@ -12,6 +12,7 @@ import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssigned
 import { saveLoadMapToDatabase, loadLoadMapsFromDatabase, deleteLoadMapFromDatabase } from './services/loadMapService';
 import { serializeError, logError } from './utils/errorUtils';
 import { getActiveConfig, ApiConfig } from './services/apiConfigService';
+import { isSyncInProgress, setSyncInProgress, setLastSyncAt } from './services/syncStateService';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
@@ -82,7 +83,19 @@ function App() {
       performAutoSync(activeApiConfig.base_url, activeApiConfig.api_key || '');
     }, intervalMs);
 
-    return () => clearInterval(intervalId);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && activeApiConfig?.base_url) {
+        console.log('👁️ Aba ativa novamente - executando sync leve');
+        performAutoSync(activeApiConfig.base_url, activeApiConfig.api_key || '');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [activeApiConfig?.base_url, activeApiConfig?.api_key, activeApiConfig?.auto_sync_enabled, activeApiConfig?.sync_interval_minutes]);
 
   const loadApiConfig = async () => {
@@ -170,15 +183,35 @@ function App() {
   };
 
   const performAutoSync = async (baseUrl: string, token: string) => {
+    if (isSyncInProgress()) {
+      console.log('⏭️ Sincronização automática pulada - sync em andamento');
+      return;
+    }
+
     try {
+      setSyncInProgress(true);
+      console.log('🔄 Iniciando sincronização automática...');
+
       const newInvoices = await fetchErpInvoices(baseUrl, token, {
         syncType: 'incremental',
       });
-      await saveInvoicesToDatabase(newInvoices);
+
+      if (newInvoices.length === 0) {
+        console.log('✅ Auto-sync: nenhuma nota nova');
+        return;
+      }
+
+      const syncSummary = await saveInvoicesToDatabase(newInvoices);
       const updatedInvoices = await loadInvoicesFromDatabase();
       setInvoices(updatedInvoices);
+
+      setLastSyncAt(new Date().toISOString());
+
+      console.log(`✅ Auto-sync concluído: ${syncSummary.insertedCount} novas, ${syncSummary.updatedCount} atualizadas`);
     } catch (error) {
-      console.error('Erro na sincronização automática:', error?.message || String(error));
+      console.error('❌ Erro na sincronização automática:', error?.message || String(error));
+    } finally {
+      setSyncInProgress(false);
     }
   };
 
@@ -268,7 +301,13 @@ function App() {
           return;
       }
 
+      if (isSyncInProgress()) {
+          alert("⚠️ Já existe uma sincronização em andamento. Aguarde a conclusão.");
+          return;
+      }
+
       setIsSyncing(true);
+      setSyncInProgress(true);
       setSyncError(null);
       setShowSyncProgress(true);
       setSyncProgress(null);
@@ -296,11 +335,14 @@ function App() {
 
           setSyncProgress(prev => prev ? { ...prev, status: 'Salvando no banco de dados...' } : null);
 
-          const { cancelledCount } = await saveInvoicesToDatabase(newInvoices);
+          const syncSummary = await saveInvoicesToDatabase(newInvoices);
 
           setSyncProgress(prev => prev ? {
             ...prev,
-            cancelledInvoices: cancelledCount,
+            cancelledInvoices: syncSummary.cancelledCount,
+            newInvoices: syncSummary.insertedCount,
+            updatedInvoices: syncSummary.updatedCount,
+            unchangedInvoices: syncSummary.unchangedCount,
             status: 'Finalizado!'
           } : null);
 
@@ -311,8 +353,19 @@ function App() {
             setShowSyncProgress(false);
           }, 2000);
 
-          alert(`✅ Sincronização concluída com sucesso!\n${newInvoices.length} notas processadas${cancelledCount > 0 ? `\n${cancelledCount} notas canceladas` : ''}.`);
+          const summaryMessage = [
+            `✅ Sincronização concluída com sucesso!`,
+            `🆕 Novas: ${syncSummary.insertedCount}`,
+            `🔄 Atualizadas: ${syncSummary.updatedCount}`,
+            `⏭️ Sem mudanças: ${syncSummary.unchangedCount}`,
+            syncSummary.cancelledCount > 0 ? `🚫 Canceladas: ${syncSummary.cancelledCount}` : '',
+            syncSummary.errorsCount > 0 ? `❌ Erros: ${syncSummary.errorsCount}` : ''
+          ].filter(Boolean).join('\n');
+
+          alert(summaryMessage);
           console.log('✨ Sincronização manual concluída!');
+
+          setLastSyncAt(new Date().toISOString());
 
       } catch (error: any) {
           const errorMessage = serializeError(error);
@@ -322,6 +375,7 @@ function App() {
           alert(`❌ Erro na sincronização:\n${errorMessage}\n\nVerifique o console do navegador (F12) para mais detalhes.`);
       } finally {
           setIsSyncing(false);
+          setSyncInProgress(false);
       }
   };
 

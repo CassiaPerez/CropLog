@@ -9,6 +9,8 @@ import {
 } from './syncConfigService';
 import { serializeError, logError } from '../utils/errorUtils';
 import { supabase } from './supabase';
+import { getApiItems, getApiTotal, getApiLimit } from '../utils/apiParsingUtils';
+import { generateSHA256Hash } from '../utils/hashUtils';
 
 interface ErpApiItem {
   id_transacao: number;
@@ -130,13 +132,21 @@ const fetchSinglePage = async (
       throw new Error(`Erro na sincronização (${response.status}): ${errorText}`);
     }
 
-    const apiResponse: ErpApiResponse = await response.json();
+    const apiResponse: any = await response.json();
 
-    if (!apiResponse.data || !Array.isArray(apiResponse.data)) {
-      throw new Error('Resposta da API não contém dados válidos');
-    }
+    const items = getApiItems(apiResponse);
+    const total = getApiTotal(apiResponse);
+    const limit = getApiLimit(apiResponse, 100);
 
-    return apiResponse;
+    const normalizedResponse: ErpApiResponse = {
+      relatorio: apiResponse.relatorio || 'sync',
+      total: total,
+      page: apiResponse.page || page,
+      limit: limit,
+      data: items
+    };
+
+    return normalizedResponse;
   }, 3, 1000);
 };
 
@@ -173,13 +183,15 @@ export const fetchInvoiceByDocNumber = async (
     throw new Error(`Erro ao buscar nota fiscal (${response.status}): ${errorText}`);
   }
 
-  const apiResponse: ErpApiResponse = await response.json();
+  const apiResponse: any = await response.json();
 
-  if (!apiResponse.data || !Array.isArray(apiResponse.data)) {
-    throw new Error('Resposta da API não contém dados válidos');
+  const items = getApiItems(apiResponse);
+
+  if (items.length === 0) {
+    throw new Error('Nenhuma nota fiscal encontrada com esse número');
   }
 
-  return processErpItems(apiResponse.data);
+  return processErpItems(items);
 };
 
 const processErpItems = (items: ErpApiItem[]): Invoice[] => {
@@ -233,13 +245,14 @@ const processErpItems = (items: ErpApiItem[]): Invoice[] => {
 async function getExistingInvoiceHashes(): Promise<Map<string, { hash: string; lastSync: string }>> {
   const { data: invoices } = await supabase
     .from('invoices')
-    .select('number, erp_data_hash, last_synced_at');
+    .select('number, source_hash, erp_data_hash, last_synced_at');
 
   const hashMap = new Map<string, { hash: string; lastSync: string }>();
   invoices?.forEach(inv => {
-    if (inv.erp_data_hash) {
+    const hash = inv.source_hash || inv.erp_data_hash;
+    if (hash) {
       hashMap.set(inv.number, {
-        hash: inv.erp_data_hash,
+        hash: hash,
         lastSync: inv.last_synced_at || ''
       });
     }
@@ -248,19 +261,20 @@ async function getExistingInvoiceHashes(): Promise<Map<string, { hash: string; l
   return hashMap;
 }
 
-function createInvoiceHash(invoice: Invoice): string {
+async function createInvoiceHash(invoice: Invoice): Promise<string> {
   const data = {
     customerName: invoice.customerName,
     customerCity: invoice.customerCity,
     totalValue: invoice.totalValue.toFixed(2),
     totalWeight: invoice.totalWeight.toFixed(3),
     itemsCount: invoice.items.length,
-    itemsHash: invoice.items
-      .map(i => `${i.sku}:${i.quantity}:${i.weightKg}`)
-      .sort()
-      .join('|')
+    items: invoice.items.map(i => ({
+      sku: i.sku,
+      quantity: i.quantity,
+      weightKg: i.weightKg.toFixed(3)
+    }))
   };
-  return btoa(JSON.stringify(data));
+  return await generateSHA256Hash(data);
 }
 
 export const fetchErpInvoices = async (
@@ -327,7 +341,7 @@ export const fetchErpInvoices = async (
     let pageInvoices = processErpItems(firstPage.data);
 
     for (const invoice of pageInvoices) {
-      const hash = createInvoiceHash(invoice);
+      const hash = await createInvoiceHash(invoice);
       const existing = existingHashes.get(invoice.number);
 
       if (!existing) {
@@ -387,7 +401,7 @@ export const fetchErpInvoices = async (
 
         let pageHasChanges = false;
         for (const invoice of pageInvoices) {
-          const hash = createInvoiceHash(invoice);
+          const hash = await createInvoiceHash(invoice);
           const existing = existingHashes.get(invoice.number);
 
           if (!existing) {

@@ -71,15 +71,33 @@ export interface LoadMap {
   timeline: TimelineEvent[];
 }
 
-export type ViewState = 
+export type ViewState =
   | 'LOGIN'
-  | 'DASHBOARD' 
-  | 'INVOICE_SELECT' 
-  | 'LOAD_MAPS' 
-  | 'MAP_DETAIL' 
-  | 'SEPARATION_LIST' 
-  | 'SEPARATION_DETAIL' 
-  | 'OPERATION_LIST' 
-  | 'OPERATION_DETAIL' 
+  | 'DASHBOARD'
+  | 'INVOICE_SELECT'
+  | 'LOAD_MAPS'
+  | 'MAP_DETAIL'
+  | 'SEPARATION_LIST'
+  | 'SEPARATION_DETAIL'
+  | 'OPERATION_LIST'
+  | 'OPERATION_DETAIL'
   | 'ADMIN_USERS'
   | 'SETTINGS';
+
+export interface SyncSummary {
+  cancelledCount: number;
+  insertedCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  errorsCount: number;
+  lastSyncAt: string | null;
+}
+
+export const EMPTY_SYNC_SUMMARY: SyncSummary = {
+  cancelledCount: 0,
+  insertedCount: 0,
+  updatedCount: 0,
+  unchangedCount: 0,
+  errorsCount: 0,
+  lastSyncAt: null,
+};

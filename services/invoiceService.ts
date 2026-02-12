@@ -1,27 +1,32 @@
 import { supabase } from './supabase';
-import { Invoice } from '../types';
+import { Invoice, SyncSummary, EMPTY_SYNC_SUMMARY } from '../types';
 import { serializeError, logError } from '../utils/errorUtils';
+import { generateSHA256Hash } from '../utils/hashUtils';
 
-function createInvoiceHash(invoice: Invoice): string {
+async function createInvoiceHash(invoice: Invoice): Promise<string> {
   const data = {
     customerName: invoice.customerName,
     customerCity: invoice.customerCity,
     totalValue: invoice.totalValue.toFixed(2),
     totalWeight: invoice.totalWeight.toFixed(3),
     itemsCount: invoice.items.length,
-    itemsHash: invoice.items
-      .map(i => `${i.sku}:${i.quantity}:${i.weightKg}`)
-      .sort()
-      .join('|')
+    items: invoice.items.map(i => ({
+      sku: i.sku,
+      quantity: i.quantity,
+      weightKg: i.weightKg.toFixed(3)
+    }))
   };
-  return btoa(JSON.stringify(data));
+  return await generateSHA256Hash(data);
 }
 
-function hasInvoiceChanged(newInv: Invoice, oldInv: any): boolean {
+async function hasInvoiceChanged(newInv: Invoice, oldInv: any, newHash: string): Promise<boolean> {
   if (!oldInv) return true;
 
+  if (oldInv.source_hash) {
+    return newHash !== oldInv.source_hash;
+  }
+
   if (oldInv.erp_data_hash) {
-    const newHash = createInvoiceHash(newInv);
     return newHash !== oldInv.erp_data_hash;
   }
 
@@ -33,8 +38,16 @@ function hasInvoiceChanged(newInv: Invoice, oldInv: any): boolean {
   return isValueDiff || isWeightDiff || isDateDiff || isCustomerDiff;
 }
 
-export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<{ cancelledCount: number }> {
-  if (invoices.length === 0) return { cancelledCount: 0 };
+export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<SyncSummary> {
+  const summary: SyncSummary = {
+    ...EMPTY_SYNC_SUMMARY,
+    lastSyncAt: new Date().toISOString()
+  };
+
+  if (invoices.length === 0) {
+    console.log('⚠️ Nenhuma nota fiscal para processar');
+    return summary;
+  }
 
   console.log(`🚀 Iniciando sincronização inteligente de ${invoices.length} notas...`);
   const startTime = performance.now();
@@ -68,8 +81,6 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<{ can
     inv => !apiInvoiceNumbers.includes(inv.number)
   );
 
-  let cancelledCount = 0;
-
   if (toCancel.length > 0) {
     console.log(`🚫 Marcando ${toCancel.length} notas como canceladas...`);
     const idsToCancel = toCancel.map(inv => inv.id);
@@ -80,55 +91,59 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<{ can
         .from('invoices')
         .update({
           is_cancelled: true,
+          cancelled_at: new Date().toISOString(),
           last_modified_at: new Date().toISOString()
         })
         .in('id', batch);
 
       if (cancelError) {
         console.error('❌ Erro ao marcar notas como canceladas:', cancelError);
+        summary.errorsCount += batch.length;
       } else {
-        cancelledCount += batch.length;
+        summary.cancelledCount += batch.length;
       }
     }
 
-    if (cancelledCount > 0) {
-      console.log(`✅ ${cancelledCount} notas marcadas como canceladas`);
+    if (summary.cancelledCount > 0) {
+      console.log(`✅ ${summary.cancelledCount} notas marcadas como canceladas`);
     }
   }
 
-  // 3. Filtrar apenas o que precisa ser salvo
-  const invoicesToSave = invoices.filter(invoice => {
+  const invoicesToSave: { invoice: Invoice; hash: string; isNew: boolean }[] = [];
+
+  for (const invoice of invoices) {
+    const hash = await createInvoiceHash(invoice);
     const oldInvoice = existingMap.get(invoice.number);
-    const changed = hasInvoiceChanged(invoice, oldInvoice);
-    if (!changed) {
-      // console.log(`⏭️ Pulan nota ${invoice.number} (sem alterações)`);
+    const changed = await hasInvoiceChanged(invoice, oldInvoice, hash);
+
+    if (!oldInvoice) {
+      invoicesToSave.push({ invoice, hash, isNew: true });
+    } else if (changed) {
+      invoicesToSave.push({ invoice, hash, isNew: false });
+    } else {
+      summary.unchangedCount++;
     }
-    return changed;
-  });
+  }
 
   console.log(`💾 Processando: ${invoicesToSave.length} notas alteradas/novas (de ${invoices.length} totais).`);
+  console.log(`⏭️ Sem mudanças: ${summary.unchangedCount}`);
 
   if (invoicesToSave.length === 0) {
     console.log('✅ Nenhuma alteração necessária.');
-    return;
+    return summary;
   }
 
-  // 4. Processamento em Lotes (Batch) com Paralelismo Limitado
-  // Processamos 10 notas simultaneamente para não sobrecarregar o banco
-  const BATCH_SIZE = 10; 
-  let successCount = 0;
-  let errorCount = 0;
+  const BATCH_SIZE = 10;
 
   for (let i = 0; i < invoicesToSave.length; i += BATCH_SIZE) {
     const chunk = invoicesToSave.slice(i, i + BATCH_SIZE);
-    
-    await Promise.all(chunk.map(async (invoice) => {
+
+    await Promise.all(chunk.map(async ({ invoice, hash, isNew }) => {
       try {
-        const hash = createInvoiceHash(invoice);
         const oldInvoice = existingMap.get(invoice.number);
-        const isModified = oldInvoice && hasInvoiceChanged(invoice, oldInvoice);
         const wasReactivated = oldInvoice?.is_cancelled;
         const invoiceId = oldInvoice?.id || crypto.randomUUID();
+        const now = new Date().toISOString();
 
         const { error: upsertError } = await supabase
           .from('invoices')
@@ -144,18 +159,20 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<{ can
             is_assigned: invoice.isAssigned || false,
             erp_data_hash: hash,
             api_hash: hash,
-            is_modified: isModified ? true : false,
+            source_hash: hash,
+            source_updated_at: now,
+            is_modified: !isNew,
             is_cancelled: false,
-            last_modified_at: (isModified || wasReactivated) ? new Date().toISOString() : undefined,
-            last_synced_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            cancelled_at: null,
+            last_modified_at: (!isNew || wasReactivated) ? now : undefined,
+            last_synced_at: now,
+            updated_at: now
           }, { onConflict: 'number' });
 
         if (upsertError) throw upsertError;
 
         await supabase.from('invoice_items').delete().eq('invoice_id', invoiceId);
 
-        // Insere os novos
         const itemsToInsert = invoice.items.map(item => ({
           invoice_id: invoiceId,
           sku: item.sku,
@@ -171,34 +188,37 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<{ can
           if (itemsError) throw itemsError;
         }
 
-        successCount++;
+        if (isNew) {
+          summary.insertedCount++;
+        } else {
+          summary.updatedCount++;
+        }
       } catch (err) {
         console.error(`❌ Falha na nota ${invoice.number}:`, err?.message || String(err));
-        errorCount++;
+        summary.errorsCount++;
       }
     }));
-    
-    // Pequeno log de progresso
+
     console.log(`⏳ Processado lote ${i + chunk.length}/${invoicesToSave.length}`);
   }
 
   const endTime = performance.now();
   const duration = ((endTime - startTime) / 1000).toFixed(2);
-  const skipped = invoices.length - invoicesToSave.length;
 
   console.log(`\n✨ Sincronização finalizada em ${duration}s`);
   console.log(`📊 Resumo:`);
-  console.log(`  ✅ Salvas/Atualizadas: ${successCount}`);
-  console.log(`  ⏭️ Sem mudanças: ${skipped}`);
-  console.log(`  🚫 Canceladas: ${cancelledCount}`);
-  console.log(`  ❌ Erros: ${errorCount}`);
+  console.log(`  🆕 Novas: ${summary.insertedCount}`);
+  console.log(`  🔄 Atualizadas: ${summary.updatedCount}`);
+  console.log(`  ⏭️ Sem mudanças: ${summary.unchangedCount}`);
+  console.log(`  🚫 Canceladas: ${summary.cancelledCount}`);
+  console.log(`  ❌ Erros: ${summary.errorsCount}`);
   console.log(`  📦 Total processado: ${invoices.length} notas\n`);
 
-  if (errorCount > 0) {
-    throw new Error(`Sincronização concluída com ${errorCount} erro(s)`);
+  if (summary.errorsCount > 0) {
+    console.warn(`⚠️ Sincronização concluída com ${summary.errorsCount} erro(s)`);
   }
 
-  return { cancelledCount };
+  return summary;
 }
 
 export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
