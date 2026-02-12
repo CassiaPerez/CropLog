@@ -985,14 +985,14 @@ function App() {
       return filtered;
     }, [invoices, searchTerm, filterStartDate, filterEndDate]);
 
-    const toggleInvoice = (id: string) => {
+    const toggleInvoice = useCallback((id: string) => {
       const next = new Set(selectedInvoiceIds);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       setSelectedInvoiceIds(next);
-    };
+    }, [selectedInvoiceIds]);
 
-    const handleCreateMap = async () => {
+    const handleCreateMap = useCallback(async () => {
       if (selectedInvoiceIds.size === 0) return;
       const selectedInvs = invoices.filter(inv => selectedInvoiceIds.has(inv.id));
       const newMap = createLoadMap(selectedInvs);
@@ -1009,9 +1009,9 @@ function App() {
       setSelectedInvoiceIds(new Set());
       setSelectedMapId(newMap.id);
       setCurrentView('MAP_DETAIL');
-    };
+    }, [selectedInvoiceIds, invoices]);
 
-    const handleDownloadPickingList = () => {
+    const handleDownloadPickingList = useCallback(() => {
       if (selectedInvoiceIds.size === 0) return;
 
       const selectedInvs = invoices.filter(inv => selectedInvoiceIds.has(inv.id));
@@ -1066,13 +1066,13 @@ function App() {
       });
 
       doc.save(`lista-separacao-${new Date().toISOString().split('T')[0]}.pdf`);
-    };
+    }, [selectedInvoiceIds, invoices]);
 
-    const clearFilters = () => {
+    const clearFilters = useCallback(() => {
       setSearchTerm('');
       setFilterStartDate('');
       setFilterEndDate('');
-    };
+    }, []);
 
     return (
       <div className="space-y-8 animate-in fade-in duration-500">
