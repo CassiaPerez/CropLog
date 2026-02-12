@@ -313,3 +313,66 @@ export async function deleteAllInvoices(): Promise<{ deletedCount: number }> {
     throw new Error(serializeError(error));
   }
 }
+
+export async function deleteAllData(): Promise<{
+  invoices: number;
+  loadMaps: number;
+  users: number;
+  syncHistory: number;
+}> {
+  try {
+    console.log('🗑️ Iniciando limpeza COMPLETA do banco de dados...');
+
+    const { data: invoicesData } = await supabase
+      .from('invoices')
+      .select('id', { count: 'exact' });
+
+    const { data: loadMapsData } = await supabase
+      .from('load_maps')
+      .select('id', { count: 'exact' });
+
+    const { data: usersData } = await supabase
+      .from('app_users')
+      .select('id', { count: 'exact' });
+
+    const { data: syncHistoryData } = await supabase
+      .from('sync_history')
+      .select('id', { count: 'exact' });
+
+    const counts = {
+      invoices: invoicesData?.length || 0,
+      loadMaps: loadMapsData?.length || 0,
+      users: usersData?.length || 0,
+      syncHistory: syncHistoryData?.length || 0
+    };
+
+    console.log('📊 Registros a deletar:', counts);
+
+    await supabase.from('load_map_timeline').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    console.log('✅ Timeline de mapas deletada');
+
+    await supabase.from('load_map_invoices').delete().neq('load_map_id', '00000000-0000-0000-0000-000000000000');
+    console.log('✅ Relação mapa-notas deletada');
+
+    await supabase.from('load_maps').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    console.log('✅ Mapas de carga deletados');
+
+    await supabase.from('invoice_items').delete().neq('invoice_id', '00000000-0000-0000-0000-000000000000');
+    console.log('✅ Itens de notas deletados');
+
+    await supabase.from('invoices').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    console.log('✅ Notas fiscais deletadas');
+
+    await supabase.from('sync_history').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    console.log('✅ Histórico de sincronização deletado');
+
+    await supabase.from('app_users').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    console.log('✅ Usuários deletados');
+
+    console.log('✨ Limpeza completa do banco de dados finalizada!');
+    return counts;
+  } catch (error) {
+    logError('Erro ao deletar todos os dados', error);
+    throw new Error(serializeError(error));
+  }
+}

@@ -8,7 +8,7 @@ import { Invoice, LoadMap, ViewState, LoadStatus, User, UserRole } from './types
 import { createLoadMap, getStatusColor } from './services/loadService';
 import { fetchErpInvoices, SyncProgress, fetchInvoiceByDocNumber } from './services/erpService';
 import { supabase } from './services/supabase';
-import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus, deleteAllInvoices } from './services/invoiceService';
+import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus, deleteAllInvoices, deleteAllData } from './services/invoiceService';
 import { saveLoadMapToDatabase, loadLoadMapsFromDatabase, deleteLoadMapFromDatabase } from './services/loadMapService';
 import { serializeError, logError } from './utils/errorUtils';
 import { getActiveConfig, ApiConfig } from './services/apiConfigService';
@@ -356,6 +356,49 @@ function App() {
       alert(`✅ ${deletedCount} notas fiscais foram deletadas com sucesso!\n\nVocê pode sincronizar novamente para importar novas notas.`);
     } catch (error) {
       alert(`❌ Erro ao deletar notas fiscais:\n${serializeError(error)}`);
+    }
+  };
+
+  const handleClearAllData = async () => {
+    const confirmation = window.confirm(
+      "🚨 PERIGO: Esta ação irá deletar TODO O BANCO DE DADOS!\n\n" +
+      "Isso inclui:\n" +
+      "• TODAS as notas fiscais e seus itens\n" +
+      "• TODOS os mapas de carga\n" +
+      "• TODOS os usuários\n" +
+      "• TODO o histórico de sincronização\n\n" +
+      "⚠️ ESTA AÇÃO NÃO PODE SER DESFEITA!\n" +
+      "⚠️ O SISTEMA SERÁ COMPLETAMENTE RESETADO!\n\n" +
+      "Deseja realmente continuar?"
+    );
+
+    if (!confirmation) return;
+
+    const doubleConfirmation = window.confirm(
+      "🔥 ÚLTIMA CONFIRMAÇÃO - AÇÃO IRREVERSÍVEL!\n\n" +
+      "Você está prestes a DELETAR TODO O BANCO DE DADOS.\n\n" +
+      "Tem CERTEZA ABSOLUTA?\n\n" +
+      "Clique OK apenas se tiver certeza."
+    );
+
+    if (!doubleConfirmation) return;
+
+    try {
+      const counts = await deleteAllData();
+      await loadInvoices();
+      await loadLoadMaps();
+
+      alert(
+        `✅ Banco de dados limpo com sucesso!\n\n` +
+        `📊 Resumo:\n` +
+        `• ${counts.invoices} notas fiscais deletadas\n` +
+        `• ${counts.loadMaps} mapas de carga deletados\n` +
+        `• ${counts.users} usuários deletados\n` +
+        `• ${counts.syncHistory} registros de histórico deletados\n\n` +
+        `O sistema foi completamente resetado.`
+      );
+    } catch (error) {
+      alert(`❌ Erro ao limpar banco de dados:\n${serializeError(error)}`);
     }
   };
 
@@ -1157,6 +1200,25 @@ function App() {
                                  >
                                      <Trash2 size={20} />
                                      Limpar Todas as Notas Fiscais
+                                 </button>
+                             </div>
+
+                             <div className="p-4 bg-red-900 border-2 border-red-700 rounded-2xl">
+                                 <div className="flex items-start gap-3 mb-3">
+                                     <AlertCircle size={20} className="text-white mt-1" />
+                                     <div>
+                                         <h3 className="font-bold text-white">LIMPAR TODO O BANCO DE DADOS</h3>
+                                         <p className="text-sm text-red-100 mt-1">
+                                             Remove TODOS os dados: notas fiscais, mapas de carga, usuários e histórico. Use apenas para reset completo do sistema.
+                                         </p>
+                                     </div>
+                                 </div>
+                                 <button
+                                     onClick={handleClearAllData}
+                                     className="w-full bg-red-950 hover:bg-black text-white py-3 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 border-2 border-white"
+                                 >
+                                     <Trash2 size={20} />
+                                     LIMPAR TODO O BANCO DE DADOS
                                  </button>
                              </div>
                          </div>
