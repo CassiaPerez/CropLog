@@ -402,6 +402,57 @@ function App() {
     }
   };
 
+  const handleCreateAdminUser = async () => {
+    const userName = window.prompt(
+      "📝 Criar Usuário Administrador\n\n" +
+      "Digite o nome do administrador:",
+      "Administrador"
+    );
+
+    if (!userName || userName.trim() === '') {
+      alert("❌ Nome do usuário é obrigatório.");
+      return;
+    }
+
+    const password = window.prompt(
+      "🔐 Criar Usuário Administrador\n\n" +
+      `Nome: ${userName}\n\n` +
+      "Digite uma senha para o usuário:",
+      ""
+    );
+
+    if (!password || password.trim() === '') {
+      alert("❌ Senha é obrigatória.");
+      return;
+    }
+
+    try {
+      const newId = crypto.randomUUID();
+      const { error } = await supabase
+        .from('app_users')
+        .insert([{
+          id: newId,
+          name: userName.trim(),
+          role: 'ADMIN',
+          password: password
+        }]);
+
+      if (error) throw error;
+
+      await fetchUsers();
+
+      alert(
+        `✅ Usuário administrador criado com sucesso!\n\n` +
+        `👤 Nome: ${userName}\n` +
+        `🔑 Perfil: Administrador\n` +
+        `🔐 Senha: ${password}\n\n` +
+        `⚠️ Guarde essa senha em local seguro!`
+      );
+    } catch (error) {
+      alert(`❌ Erro ao criar usuário administrador:\n${serializeError(error)}`);
+    }
+  };
+
   // --- User Management Handlers ---
 
   const handleOpenNewUser = () => {
@@ -1173,6 +1224,34 @@ function App() {
                              <div className="flex justify-between items-center p-4 bg-background rounded-2xl">
                                  <span className="font-bold text-text-secondary">Ambiente</span>
                                  <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-bold uppercase">Produção</span>
+                             </div>
+                         </div>
+                     </div>
+
+                     <div className="bg-white rounded-3xl shadow-soft p-10 border border-border/50">
+                         <div className="flex items-center gap-4 mb-6">
+                             <div className="p-4 bg-blue-50 rounded-2xl text-blue-600"><UserPlus size={32}/></div>
+                             <h2 className="text-2xl font-black text-text-main">Acesso Rápido</h2>
+                         </div>
+
+                         <div className="space-y-4">
+                             <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-2xl">
+                                 <div className="flex items-start gap-3 mb-3">
+                                     <ShieldCheck size={20} className="text-blue-600 mt-1" />
+                                     <div>
+                                         <h3 className="font-bold text-blue-900">Criar Usuário Administrador</h3>
+                                         <p className="text-sm text-blue-700 mt-1">
+                                             Cria rapidamente um novo usuário com perfil de Administrador e acesso completo ao sistema.
+                                         </p>
+                                     </div>
+                                 </div>
+                                 <button
+                                     onClick={handleCreateAdminUser}
+                                     className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2"
+                                 >
+                                     <UserPlus size={20} />
+                                     Criar Administrador
+                                 </button>
                              </div>
                          </div>
                      </div>
