@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Layout } from './components/Layout';
 import { ProductModal } from './components/ProductModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
@@ -63,6 +63,32 @@ function App() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [selectedMapId, setSelectedMapId] = useState<string | null>(null);
+
+  // --- Memoized Handlers ---
+
+  const handleSearchTermChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  }, []);
+
+  const handleFilterStartDateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFilterStartDate(e.target.value);
+  }, []);
+
+  const handleFilterEndDateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFilterEndDate(e.target.value);
+  }, []);
+
+  const handleUserFormNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setUserFormName(e.target.value);
+  }, []);
+
+  const handleUserFormPasswordChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setUserFormPassword(e.target.value);
+  }, []);
+
+  const handleUserFormRoleChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setUserFormRole(e.target.value as UserRole);
+  }, []);
 
   // --- Effects ---
 
@@ -1107,7 +1133,7 @@ function App() {
                   <input
                     type="text"
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={handleSearchTermChange}
                     onKeyDown={(e) => e.key === 'Enter' && handleSearchByDocNumber()}
                     placeholder="NF, Cliente ou Cidade (Enter para buscar na API)"
                     className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
@@ -1129,7 +1155,7 @@ function App() {
                 <input
                   type="date"
                   value={filterStartDate}
-                  onChange={(e) => setFilterStartDate(e.target.value)}
+                  onChange={handleFilterStartDateChange}
                   className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
                 />
               </div>
@@ -1140,7 +1166,7 @@ function App() {
                 <input
                   type="date"
                   value={filterEndDate}
-                  onChange={(e) => setFilterEndDate(e.target.value)}
+                  onChange={handleFilterEndDateChange}
                   className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
                 />
               </div>
@@ -2195,10 +2221,10 @@ function App() {
                 <form onSubmit={handleSaveUser} className="p-8 space-y-6">
                     <div className="space-y-2">
                         <label className="text-base font-bold text-text-secondary uppercase tracking-wide">Nome Completo</label>
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             value={userFormName}
-                            onChange={e => setUserFormName(e.target.value)}
+                            onChange={handleUserFormNameChange}
                             className="w-full p-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium text-text-main outline-none transition-all"
                             placeholder="Ex: João Silva"
                             required
@@ -2210,7 +2236,7 @@ function App() {
                         <div className="relative">
                             <select 
                                 value={userFormRole}
-                                onChange={e => setUserFormRole(e.target.value as UserRole)}
+                                onChange={handleUserFormRoleChange}
                                 className="w-full p-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium text-text-main outline-none appearance-none transition-all cursor-pointer"
                             >
                                 <option value="ADMIN">Administrador (Acesso Total)</option>
@@ -2235,7 +2261,7 @@ function App() {
                         <input
                             type="password"
                             value={userFormPassword}
-                            onChange={e => setUserFormPassword(e.target.value)}
+                            onChange={handleUserFormPasswordChange}
                             className="w-full p-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium text-text-main outline-none transition-all"
                             placeholder={editingUser ? '••••••••' : 'Digite a senha'}
                             required={!editingUser}

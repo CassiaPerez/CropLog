@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Globe, Key, CheckCircle, XCircle, Loader, Save, RefreshCw, Clock } from 'lucide-react';
 import {
   ApiConfig,
@@ -28,6 +28,26 @@ export const ApiConfigPanel: React.FC<ApiConfigPanelProps> = ({ onConfigSaved })
   const [isSaving, setIsSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, name: e.target.value }));
+  }, []);
+
+  const handleBaseUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, base_url: e.target.value }));
+  }, []);
+
+  const handleApiKeyChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, api_key: e.target.value }));
+  }, []);
+
+  const handleAutoSyncToggle = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, auto_sync_enabled: e.target.checked }));
+  }, []);
+
+  const handleSyncIntervalChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, sync_interval_minutes: parseInt(e.target.value) || 5 }));
+  }, []);
 
   useEffect(() => {
     loadConfig();
@@ -139,7 +159,7 @@ export const ApiConfigPanel: React.FC<ApiConfigPanelProps> = ({ onConfigSaved })
         <div className="relative">
           <input
             value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            onChange={handleNameChange}
             type="text"
             className="w-full pl-14 pr-4 py-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium outline-none transition-all"
             placeholder="Configuração Principal"
@@ -155,7 +175,7 @@ export const ApiConfigPanel: React.FC<ApiConfigPanelProps> = ({ onConfigSaved })
         <div className="relative">
           <input
             value={formData.base_url}
-            onChange={(e) => setFormData({ ...formData, base_url: e.target.value })}
+            onChange={handleBaseUrlChange}
             type="text"
             className="w-full pl-14 pr-4 py-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium outline-none transition-all"
             placeholder="https://api.erp.com/api/Faturamento_Backlog_Wonder?..."
@@ -174,7 +194,7 @@ export const ApiConfigPanel: React.FC<ApiConfigPanelProps> = ({ onConfigSaved })
         <div className="relative">
           <input
             value={formData.api_key}
-            onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+            onChange={handleApiKeyChange}
             type="password"
             className="w-full pl-14 pr-4 py-4 bg-background rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium outline-none transition-all"
             placeholder="a4d8c7f12e3b4c9a9f6e9e2a1b4d7c8f..."
@@ -192,7 +212,7 @@ export const ApiConfigPanel: React.FC<ApiConfigPanelProps> = ({ onConfigSaved })
           <input
             type="checkbox"
             checked={formData.auto_sync_enabled}
-            onChange={(e) => setFormData({ ...formData, auto_sync_enabled: e.target.checked })}
+            onChange={handleAutoSyncToggle}
             className="w-6 h-6 rounded border-2 border-text-light checked:bg-primary checked:border-primary cursor-pointer transition-all"
           />
           <span className="text-lg font-medium group-hover:text-primary transition-colors">
@@ -212,7 +232,7 @@ export const ApiConfigPanel: React.FC<ApiConfigPanelProps> = ({ onConfigSaved })
                 min="1"
                 max="60"
                 value={formData.sync_interval_minutes}
-                onChange={(e) => setFormData({ ...formData, sync_interval_minutes: parseInt(e.target.value) || 5 })}
+                onChange={handleSyncIntervalChange}
                 className="w-24 px-4 py-2 bg-white rounded-xl border-2 border-transparent focus:border-primary/20 text-lg font-medium outline-none transition-all"
               />
               <span className="text-text-secondary font-medium">minutos</span>
