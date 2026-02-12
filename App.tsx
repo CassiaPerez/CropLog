@@ -8,7 +8,7 @@ import { Invoice, LoadMap, ViewState, LoadStatus, User, UserRole } from './types
 import { createLoadMap, getStatusColor } from './services/loadService';
 import { fetchErpInvoices, SyncProgress, fetchInvoiceByDocNumber } from './services/erpService';
 import { supabase } from './services/supabase';
-import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus } from './services/invoiceService';
+import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus, deleteAllInvoices } from './services/invoiceService';
 import { saveLoadMapToDatabase, loadLoadMapsFromDatabase, deleteLoadMapFromDatabase } from './services/loadMapService';
 import { serializeError, logError } from './utils/errorUtils';
 import { getActiveConfig, ApiConfig } from './services/apiConfigService';
@@ -328,6 +328,35 @@ function App() {
   const handleConfigSaved = async () => {
       await loadApiConfig();
       alert("Configuração salva com sucesso!");
+  };
+
+  const handleClearAllInvoices = async () => {
+    const confirmation = window.confirm(
+      "⚠️ ATENÇÃO: Esta ação irá deletar TODAS as notas fiscais do banco de dados!\n\n" +
+      "Isso inclui:\n" +
+      "• Todas as notas fiscais\n" +
+      "• Todos os itens das notas\n\n" +
+      "Esta ação NÃO pode ser desfeita!\n\n" +
+      "Deseja realmente continuar?"
+    );
+
+    if (!confirmation) return;
+
+    const doubleConfirmation = window.confirm(
+      "🚨 ÚLTIMA CONFIRMAÇÃO\n\n" +
+      "Tem certeza absoluta que deseja deletar TODAS as notas fiscais?\n\n" +
+      "Digite 'OK' no próximo prompt para confirmar."
+    );
+
+    if (!doubleConfirmation) return;
+
+    try {
+      const { deletedCount } = await deleteAllInvoices();
+      await loadInvoices();
+      alert(`✅ ${deletedCount} notas fiscais foram deletadas com sucesso!\n\nVocê pode sincronizar novamente para importar novas notas.`);
+    } catch (error) {
+      alert(`❌ Erro ao deletar notas fiscais:\n${serializeError(error)}`);
+    }
   };
 
   // --- User Management Handlers ---
@@ -1101,6 +1130,34 @@ function App() {
                              <div className="flex justify-between items-center p-4 bg-background rounded-2xl">
                                  <span className="font-bold text-text-secondary">Ambiente</span>
                                  <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-bold uppercase">Produção</span>
+                             </div>
+                         </div>
+                     </div>
+
+                     <div className="bg-white rounded-3xl shadow-soft p-10 border border-border/50">
+                         <div className="flex items-center gap-4 mb-6">
+                             <div className="p-4 bg-red-50 rounded-2xl text-red-600"><Trash2 size={32}/></div>
+                             <h2 className="text-2xl font-black text-text-main">Manutenção de Dados</h2>
+                         </div>
+
+                         <div className="space-y-4">
+                             <div className="p-4 bg-amber-50 border-2 border-amber-200 rounded-2xl">
+                                 <div className="flex items-start gap-3 mb-3">
+                                     <AlertTriangle size={20} className="text-amber-600 mt-1" />
+                                     <div>
+                                         <h3 className="font-bold text-amber-900">Limpar Todas as Notas Fiscais</h3>
+                                         <p className="text-sm text-amber-700 mt-1">
+                                             Remove TODAS as notas fiscais e seus itens do banco de dados. Use apenas se precisar reiniciar a sincronização completamente.
+                                         </p>
+                                     </div>
+                                 </div>
+                                 <button
+                                     onClick={handleClearAllInvoices}
+                                     className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2"
+                                 >
+                                     <Trash2 size={20} />
+                                     Limpar Todas as Notas Fiscais
+                                 </button>
                              </div>
                          </div>
                      </div>

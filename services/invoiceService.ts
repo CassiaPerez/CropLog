@@ -268,3 +268,48 @@ export async function updateInvoiceAssignedStatus(invoiceIds: string | string[],
     throw new Error(serializeError(error));
   }
 }
+
+export async function deleteAllInvoices(): Promise<{ deletedCount: number }> {
+  try {
+    console.log('🗑️ Iniciando limpeza de todas as notas fiscais...');
+
+    const { data: invoicesData, error: countError } = await supabase
+      .from('invoices')
+      .select('id', { count: 'exact' });
+
+    if (countError) throw countError;
+
+    const totalCount = invoicesData?.length || 0;
+
+    if (totalCount === 0) {
+      console.log('✅ Nenhuma nota fiscal encontrada para deletar.');
+      return { deletedCount: 0 };
+    }
+
+    const { error: itemsError } = await supabase
+      .from('invoice_items')
+      .delete()
+      .neq('invoice_id', '00000000-0000-0000-0000-000000000000');
+
+    if (itemsError) {
+      console.error('❌ Erro ao deletar itens:', itemsError);
+      throw itemsError;
+    }
+
+    const { error: invoicesError } = await supabase
+      .from('invoices')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+
+    if (invoicesError) {
+      console.error('❌ Erro ao deletar notas fiscais:', invoicesError);
+      throw invoicesError;
+    }
+
+    console.log(`✅ ${totalCount} notas fiscais deletadas com sucesso!`);
+    return { deletedCount: totalCount };
+  } catch (error) {
+    logError('Erro ao deletar todas as notas fiscais', error);
+    throw new Error(serializeError(error));
+  }
+}
