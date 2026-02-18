@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { Plus, X } from 'lucide-react';
 import { Layout } from './components/Layout';
 import { ProductModal } from './components/ProductModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
@@ -698,6 +699,44 @@ function App() {
       console.error('Erro ao adicionar notas:', error);
       alert('Erro ao adicionar notas fiscais ao mapa');
       throw error;
+    }
+  };
+
+  const handleRemoveInvoiceFromMap = async (mapId: string, invoiceId: string) => {
+    if (!confirm('Deseja realmente remover esta nota fiscal do mapa?')) {
+      return;
+    }
+
+    try {
+      const map = loadMaps.find(m => m.id === mapId);
+      if (!map) return;
+
+      // Remover a nota do mapa
+      const filteredInvoices = map.invoices.filter(inv => inv.id !== invoiceId);
+      const updatedMap: LoadMap = {
+        ...map,
+        invoices: filteredInvoices,
+      };
+
+      // Marcar a nota como não atribuída no banco
+      await supabase
+        .from('invoices')
+        .update({ is_assigned: false })
+        .eq('id', invoiceId);
+
+      // Salvar o mapa atualizado
+      await saveLoadMapToDatabase(updatedMap);
+
+      // Recarregar os dados
+      const updatedMaps = await loadLoadMapsFromDatabase();
+      setLoadMaps(updatedMaps);
+      const refreshedInvoices = await loadInvoicesFromDatabase();
+      setInvoices(refreshedInvoices);
+
+      alert('Nota fiscal removida com sucesso!');
+    } catch (error) {
+      console.error('Erro ao remover nota:', error);
+      alert('Erro ao remover nota fiscal do mapa');
     }
   };
 
@@ -1942,7 +1981,16 @@ function App() {
 
             {/* Invoices List */}
             <div className="bg-white rounded-3xl shadow-soft p-10 border border-border/50">
-                <h3 className="text-2xl font-bold text-text-main mb-8">Notas Fiscais Vinculadas</h3>
+                <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-2xl font-bold text-text-main">Notas Fiscais Vinculadas</h3>
+                    <button
+                        onClick={handleOpenEditModal}
+                        className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+                    >
+                        <Plus size={20} />
+                        Adicionar Notas
+                    </button>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="border-b border-border">
@@ -1952,6 +2000,7 @@ function App() {
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Cliente</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase text-right">Valor</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase text-right">Peso</th>
+                                <th className="py-4 px-4 text-base font-bold text-text-light uppercase text-center">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
@@ -1964,6 +2013,15 @@ function App() {
                                     <td className="py-6 px-4 text-xl font-medium text-text-secondary">{inv.customerName}</td>
                                     <td className="py-6 px-4 text-xl font-mono font-bold text-text-main text-right">{formatCurrency(inv.totalValue)}</td>
                                     <td className="py-6 px-4 text-xl font-mono font-bold text-text-main text-right">{inv.totalWeight} kg</td>
+                                    <td className="py-6 px-4 text-center">
+                                        <button
+                                            onClick={() => handleRemoveInvoiceFromMap(map.id, inv.id)}
+                                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Remover nota do mapa"
+                                        >
+                                            <X size={20} />
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
