@@ -9,7 +9,7 @@ import {
 } from './syncConfigService';
 import { serializeError, logError } from '../utils/errorUtils';
 import { supabase } from './supabase';
-import { getApiItems, getApiTotal, getApiLimit } from '../utils/apiParsingUtils';
+import { getApiItems, getApiTotal, getApiLimit, getApiTotalExplicit } from '../utils/apiParsingUtils';
 import { generateSHA256Hash } from '../utils/hashUtils';
 
 interface ErpApiItem {
@@ -54,6 +54,7 @@ interface ErpApiItem {
 interface ErpApiResponse {
   relatorio: string;
   total: number;
+  totalExplicit: number | null;
   page: number;
   limit: number;
   data: ErpApiItem[];
@@ -136,11 +137,13 @@ const fetchSinglePage = async (
 
     const items = getApiItems(apiResponse);
     const total = getApiTotal(apiResponse);
+    const totalExplicit = getApiTotalExplicit(apiResponse);
     const limit = getApiLimit(apiResponse, 100);
 
     const normalizedResponse: ErpApiResponse = {
       relatorio: apiResponse.relatorio || 'sync',
       total: total,
+      totalExplicit: totalExplicit,
       page: apiResponse.page || page,
       limit: limit,
       data: items
@@ -325,28 +328,30 @@ export const fetchErpInvoices = async (
     console.log('📥 Buscando primeira página...');
     const firstPage = await fetchSinglePage(baseUrl, 1);
 
-    const totalRecords = firstPage.total || 0;
+    const totalRecordsExplicit = firstPage.totalExplicit;
     const limitPerPage = firstPage.limit || 100;
-    const totalPages = Math.ceil(totalRecords / limitPerPage);
+    const firstPageItemCount = firstPage.data.length;
+
+    const totalKnown = totalRecordsExplicit !== null && totalRecordsExplicit > 0;
+    const totalRecords = totalKnown ? totalRecordsExplicit! : 0;
+    const totalPages = totalKnown ? Math.ceil(totalRecords / limitPerPage) : null;
 
     console.log(`\n${'='.repeat(60)}`);
     console.log(`📊 INFORMAÇÕES DA API`);
     console.log(`${'='.repeat(60)}`);
-    console.log(`📦 Total de registros na API: ${totalRecords.toLocaleString()}`);
-    console.log(`📄 Limite por página: ${limitPerPage.toLocaleString()} registros`);
-    console.log(`📖 Total de páginas: ${totalPages}`);
-    console.log(`${'='.repeat(60)}`);
-
-    if (syncType === 'full') {
-      console.log(`🔥 MODO COMPLETO: Todas as ${totalPages} páginas serão processadas!`);
-      console.log(`⏱️ Isso vai buscar ${totalRecords.toLocaleString()} registros da API`);
+    if (totalKnown) {
+      console.log(`📦 Total de registros na API: ${totalRecords.toLocaleString()}`);
+      console.log(`📄 Limite por página: ${limitPerPage.toLocaleString()} registros`);
+      console.log(`📖 Total de páginas: ${totalPages}`);
     } else {
-      console.log(`⚡ MODO INCREMENTAL: Pode parar cedo ao encontrar notas já sincronizadas`);
+      console.log(`📦 Total de registros: desconhecido (API não retornou campo total)`);
+      console.log(`📄 Limite por página: ${limitPerPage.toLocaleString()} registros`);
+      console.log(`📖 Modo: busca contínua até página vazia`);
     }
     console.log(`${'='.repeat(60)}\n`);
 
-    if (totalRecords === 0) {
-      console.warn('⚠️ Nenhum dado retornado da API ERP');
+    if (firstPageItemCount === 0) {
+      console.warn('Nenhum dado retornado da API ERP');
       await completeSyncHistory(syncHistoryId, 0, 0);
       return [];
     }
@@ -371,9 +376,9 @@ export const fetchErpInvoices = async (
     if (onProgress) {
       onProgress({
         currentPage: 1,
-        totalPages: totalPages,
+        totalPages: totalPages ?? 0,
         processedInvoices: pageInvoices.length,
-        percentage: (1 / totalPages) * 100,
+        percentage: totalPages ? (1 / totalPages) * 100 : 0,
         status: 'Processando páginas...',
         ...stats
       });
@@ -391,7 +396,9 @@ export const fetchErpInvoices = async (
     let page = 2;
     let consecutiveUnchanged = 0;
     const maxConsecutiveUnchanged = syncType === 'incremental' ? 50 : Infinity;
-    const pagesToFetch = maxPages ? Math.min(totalPages, maxPages) : totalPages;
+    const pagesToFetch = totalPages
+      ? (maxPages ? Math.min(totalPages, maxPages) : totalPages)
+      : (maxPages ?? Number.MAX_SAFE_INTEGER);
     const startTime = Date.now();
 
     while (page <= pagesToFetch) {
@@ -401,16 +408,21 @@ export const fetchErpInvoices = async (
         if (onProgress) {
           onProgress({
             currentPage: page - 1,
-            totalPages: pagesToFetch,
+            totalPages: totalPages ?? 0,
             processedInvoices: allInvoices.length,
-            percentage: ((page - 1) / pagesToFetch) * 100,
-            status: `Buscando página ${page}/${pagesToFetch}...`,
+            percentage: totalPages ? ((page - 1) / totalPages) * 100 : 0,
+            status: `Buscando página ${page}${totalPages ? `/${totalPages}` : ''}...`,
             ...stats
           });
         }
 
         const pageData = await fetchSinglePage(baseUrl, page);
         pageInvoices = processErpItems(pageData.data);
+
+        if (pageData.data.length === 0) {
+          console.log(`Página ${page} vazia — fim da paginação`);
+          break;
+        }
 
         let pageHasChanges = false;
         for (const invoice of pageInvoices) {
@@ -432,30 +444,29 @@ export const fetchErpInvoices = async (
 
         if (!pageHasChanges && syncType === 'incremental') {
           consecutiveUnchanged++;
-          console.log(`⏭️ Página ${page}: sem alterações (${consecutiveUnchanged}/${maxConsecutiveUnchanged})`);
+          console.log(`Página ${page}: sem alterações (${consecutiveUnchanged}/${maxConsecutiveUnchanged})`);
 
           if (consecutiveUnchanged >= maxConsecutiveUnchanged) {
-            console.log(`🎯 Early stopping: ${consecutiveUnchanged} páginas consecutivas sem mudanças`);
-            console.log(`⚠️ ATENÇÃO: Sincronização incremental parou na página ${page}/${totalPages}`);
-            console.log(`💡 Use "Sincronização Completa" para buscar todas as ${totalPages} páginas`);
+            console.log(`Early stopping: ${consecutiveUnchanged} páginas consecutivas sem mudanças`);
             break;
           }
         } else {
           consecutiveUnchanged = 0;
-          console.log(`✅ Página ${page}/${pagesToFetch}: ${pageInvoices.length} notas processadas`);
+          console.log(`Página ${page}${totalPages ? `/${totalPages}` : ''}: ${pageInvoices.length} notas processadas`);
         }
 
         const elapsedTime = Date.now() - startTime;
         const avgTimePerPage = elapsedTime / (page - 1);
-        const remainingPages = pagesToFetch - page;
-        const estimatedTimeRemaining = (avgTimePerPage * remainingPages) / 1000;
+        const estimatedTimeRemaining = totalPages
+          ? (avgTimePerPage * (totalPages - page)) / 1000
+          : undefined;
 
         if (onProgress) {
           onProgress({
             currentPage: page,
-            totalPages: pagesToFetch,
+            totalPages: totalPages ?? 0,
             processedInvoices: allInvoices.length,
-            percentage: (page / pagesToFetch) * 100,
+            percentage: totalPages ? (page / totalPages) * 100 : 0,
             estimatedTimeRemaining,
             status: 'Processando...',
             ...stats
@@ -469,37 +480,28 @@ export const fetchErpInvoices = async (
 
         page++;
       } catch (pageError) {
-        console.error(`❌ Erro ao buscar página ${page}:`, pageError);
+        console.error(`Erro ao buscar página ${page}:`, pageError);
         page++;
       }
     }
 
     const finalPageCount = page - 1;
+    const knownTotal = totalPages ?? finalPageCount;
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`📊 RESULTADO DA SINCRONIZAÇÃO ${syncType.toUpperCase()}`);
+    console.log(`RESULTADO DA SINCRONIZAÇÃO ${syncType.toUpperCase()}`);
     console.log(`${'='.repeat(60)}`);
-    console.log(`📄 Páginas processadas: ${finalPageCount}/${totalPages}`);
-
-    if (finalPageCount < totalPages) {
-      console.warn(`⚠️ ATENÇÃO: ${totalPages - finalPageCount} páginas NÃO foram processadas!`);
-      console.warn(`💡 Use "Sincronização Completa" para processar todas as páginas.`);
-    } else {
-      console.log(`✅ TODAS as ${totalPages} páginas foram processadas com sucesso!`);
-    }
-
-    console.log(`📦 Total de notas encontradas: ${allInvoices.length}`);
-    console.log(`🆕 Novas: ${stats.newInvoices} | 🔄 Atualizadas: ${stats.updatedInvoices} | ⏭️ Inalteradas: ${stats.unchangedInvoices}`);
+    console.log(`Páginas processadas: ${finalPageCount}${totalPages ? `/${totalPages}` : ''}`);
+    console.log(`Total de notas encontradas: ${allInvoices.length}`);
+    console.log(`Novas: ${stats.newInvoices} | Atualizadas: ${stats.updatedInvoices} | Inalteradas: ${stats.unchangedInvoices}`);
     console.log(`${'='.repeat(60)}\n`);
 
     if (onProgress) {
       onProgress({
         currentPage: finalPageCount,
-        totalPages: totalPages,
+        totalPages: knownTotal,
         processedInvoices: allInvoices.length,
         percentage: 100,
-        status: finalPageCount < totalPages
-          ? `⚠️ Processadas ${finalPageCount}/${totalPages} páginas - Salvando...`
-          : 'Salvando no banco de dados...',
+        status: 'Salvando no banco de dados...',
         ...stats
       });
     }

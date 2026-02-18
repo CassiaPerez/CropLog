@@ -1,3 +1,12 @@
+function parseNumeric(val: unknown): number | null {
+  if (typeof val === 'number' && !isNaN(val)) return val;
+  if (typeof val === 'string') {
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed)) return parsed;
+  }
+  return null;
+}
+
 export function getApiItems(payload: any): any[] {
   if (!payload) return [];
 
@@ -27,20 +36,20 @@ export function getApiItems(payload: any): any[] {
 export function getApiTotal(payload: any): number {
   if (!payload) return 0;
 
-  if (typeof payload.total === 'number') {
-    return payload.total;
-  }
+  const candidates = [
+    payload.total,
+    payload.totalCount,
+    payload.count,
+    payload.totalRecords,
+    payload.qtd_total,
+    payload.quantidade_total,
+    payload.total_registros,
+    payload.totalItems,
+  ];
 
-  if (typeof payload.totalCount === 'number') {
-    return payload.totalCount;
-  }
-
-  if (typeof payload.count === 'number') {
-    return payload.count;
-  }
-
-  if (typeof payload.totalRecords === 'number') {
-    return payload.totalRecords;
+  for (const val of candidates) {
+    const n = parseNumeric(val);
+    if (n !== null && n > 0) return n;
   }
 
   const items = getApiItems(payload);
@@ -50,34 +59,57 @@ export function getApiTotal(payload: any): number {
 export function getApiLimit(payload: any, defaultLimit: number = 100): number {
   if (!payload) return defaultLimit;
 
-  if (typeof payload.limit === 'number') {
-    return payload.limit;
-  }
+  const candidates = [
+    payload.limit,
+    payload.pageSize,
+    payload.perPage,
+    payload.per_page,
+    payload.page_size,
+  ];
 
-  if (typeof payload.pageSize === 'number') {
-    return payload.pageSize;
-  }
-
-  if (typeof payload.perPage === 'number') {
-    return payload.perPage;
+  for (const val of candidates) {
+    const n = parseNumeric(val);
+    if (n !== null && n > 0) return n;
   }
 
   return defaultLimit;
 }
 
+export function getApiTotalExplicit(payload: any): number | null {
+  if (!payload) return null;
+
+  const candidates = [
+    payload.total,
+    payload.totalCount,
+    payload.count,
+    payload.totalRecords,
+    payload.qtd_total,
+    payload.quantidade_total,
+    payload.total_registros,
+    payload.totalItems,
+  ];
+
+  for (const val of candidates) {
+    const n = parseNumeric(val);
+    if (n !== null && n > 0) return n;
+  }
+
+  return null;
+}
+
 export function getApiPage(payload: any, defaultPage: number = 1): number {
   if (!payload) return defaultPage;
 
-  if (typeof payload.page === 'number') {
-    return payload.page;
-  }
+  const candidates = [
+    payload.page,
+    payload.currentPage,
+    payload.pageNumber,
+    payload.current_page,
+  ];
 
-  if (typeof payload.currentPage === 'number') {
-    return payload.currentPage;
-  }
-
-  if (typeof payload.pageNumber === 'number') {
-    return payload.pageNumber;
+  for (const val of candidates) {
+    const n = parseNumeric(val);
+    if (n !== null) return n;
   }
 
   return defaultPage;
