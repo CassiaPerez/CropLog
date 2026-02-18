@@ -423,6 +423,8 @@ export const fetchErpInvoices = async (
 
           if (consecutiveUnchanged >= maxConsecutiveUnchanged) {
             console.log(`🎯 Early stopping: ${consecutiveUnchanged} páginas consecutivas sem mudanças`);
+            console.log(`⚠️ ATENÇÃO: Sincronização incremental parou na página ${page}/${totalPages}`);
+            console.log(`💡 Use "Sincronização Completa" para buscar todas as ${totalPages} páginas`);
             break;
           }
         } else {
