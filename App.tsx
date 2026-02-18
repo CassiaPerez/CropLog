@@ -3,6 +3,7 @@ import { Layout } from './components/Layout';
 import { ProductModal } from './components/ProductModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
 import { ApiConfigPanel } from './components/ApiConfigPanel';
+import { EditLoadMapModal } from './components/EditLoadMapModal';
 import { CARRIER_LIST } from './constants';
 import { Invoice, LoadMap, ViewState, LoadStatus, User, UserRole } from './types';
 import { createLoadMap, getStatusColor } from './services/loadService';
@@ -64,6 +65,8 @@ function App() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [selectedMapId, setSelectedMapId] = useState<string | null>(null);
+  const [isEditLoadMapModalOpen, setIsEditLoadMapModalOpen] = useState(false);
+  const [editingLoadMap, setEditingLoadMap] = useState<LoadMap | null>(null);
 
   // --- Memoized Handlers ---
 
@@ -1732,6 +1735,23 @@ function App() {
         await addTimelineEvent(map.id, LoadStatus.READY_FOR_SEPARATION, "Liberado para separação");
         setCurrentView('LOAD_MAPS');
     };
+
+    const handleOpenEditModal = () => {
+        setEditingLoadMap(map);
+        setIsEditLoadMapModalOpen(true);
+    };
+
+    const handleSaveEditedMap = async (updatedMap: LoadMap) => {
+        try {
+            await saveLoadMapToDatabase(updatedMap);
+            const updatedMaps = await loadLoadMapsFromDatabase();
+            setLoadMaps(updatedMaps);
+            alert('Notas adicionadas com sucesso!');
+        } catch (error) {
+            console.error('Erro ao adicionar notas:', error);
+            throw error;
+        }
+    };
     
     const generateManifestPDF = async () => {
         const doc = new jsPDF();
@@ -1811,6 +1831,11 @@ function App() {
                      <button onClick={generateManifestPDF} className="px-6 py-4 bg-white border border-slate-200 text-text-main rounded-2xl font-bold text-lg hover:border-primary hover:text-primary transition-all flex items-center gap-2">
                         <Printer size={24}/> Imprimir Manifesto
                      </button>
+                     {map.status === LoadStatus.PLANNING && (
+                        <button onClick={handleOpenEditModal} className="px-6 py-4 bg-blue-600 text-white rounded-2xl font-bold text-lg hover:bg-blue-700 transition-all flex items-center gap-2">
+                           <Plus size={24}/> Adicionar Notas
+                        </button>
+                     )}
                      <button onClick={saveChanges} className="px-8 py-4 bg-text-main text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-black transition-all flex items-center gap-2"><Save size={24}/> Salvar</button>
                      {map.status === LoadStatus.PLANNING && (
                         <button onClick={releaseToSeparation} className="px-8 py-4 bg-accent text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-emerald-600 transition-all flex items-center gap-2"><CheckCircle2 size={24}/> Liberar</button>
@@ -2401,6 +2426,17 @@ function App() {
         {currentView === 'SETTINGS' && <SettingsView />}
         <UserFormModal />
         <ProductModal invoice={viewingInvoice} onClose={() => setViewingInvoice(null)} />
+        {isEditLoadMapModalOpen && editingLoadMap && (
+          <EditLoadMapModal
+            loadMap={editingLoadMap}
+            availableInvoices={invoices.filter(inv => !inv.isAssigned)}
+            onClose={() => {
+              setIsEditLoadMapModalOpen(false);
+              setEditingLoadMap(null);
+            }}
+            onSave={handleSaveEditedMap}
+          />
+        )}
       </Layout>
     </>
   );
