@@ -673,6 +673,23 @@ function App() {
     }
   };
 
+  const handleSaveEditedMap = async (updatedMap: LoadMap) => {
+    try {
+      await saveLoadMapToDatabase(updatedMap);
+      const updatedMaps = await loadLoadMapsFromDatabase();
+      setLoadMaps(updatedMaps);
+      const updatedInvoices = await loadInvoicesFromDatabase();
+      setInvoices(updatedInvoices);
+      setIsEditLoadMapModalOpen(false);
+      setEditingLoadMap(null);
+      alert('Notas adicionadas com sucesso!');
+    } catch (error) {
+      console.error('Erro ao adicionar notas:', error);
+      alert('Erro ao adicionar notas fiscais ao mapa');
+      throw error;
+    }
+  };
+
   // --- Views ---
 
   const LoginView = () => {
@@ -1463,6 +1480,12 @@ function App() {
           setCurrentView('MAP_DETAIL');
       };
 
+      const handleAddNotesToMap = (e: React.MouseEvent, map: LoadMap) => {
+          e.stopPropagation();
+          setEditingLoadMap(map);
+          setIsEditLoadMapModalOpen(true);
+      };
+
       const handleDownloadReport = async () => {
         const doc = new jsPDF();
 
@@ -1562,7 +1585,7 @@ function App() {
                                         <span className="font-bold text-text-main">{totalWeight.toFixed(0)} kg</span>
                                     </div>
                                 </div>
-                                
+
                                 {/* Visual Progress Bar */}
                                 <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
                                     <div className="bg-primary h-full rounded-full transition-all duration-500" style={{width: `${progress}%`}}></div>
@@ -1571,6 +1594,15 @@ function App() {
                                     <span>Progresso</span>
                                     <span>{progress}%</span>
                                 </div>
+
+                                {map.status === LoadStatus.PLANNING && (
+                                    <button
+                                        onClick={(e) => handleAddNotesToMap(e, map)}
+                                        className="w-full mt-4 px-4 py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100"
+                                    >
+                                        <Plus size={18} /> Adicionar Notas
+                                    </button>
+                                )}
                             </div>
                         </div>
                     );
@@ -1739,18 +1771,6 @@ function App() {
     const handleOpenEditModal = () => {
         setEditingLoadMap(map);
         setIsEditLoadMapModalOpen(true);
-    };
-
-    const handleSaveEditedMap = async (updatedMap: LoadMap) => {
-        try {
-            await saveLoadMapToDatabase(updatedMap);
-            const updatedMaps = await loadLoadMapsFromDatabase();
-            setLoadMaps(updatedMaps);
-            alert('Notas adicionadas com sucesso!');
-        } catch (error) {
-            console.error('Erro ao adicionar notas:', error);
-            throw error;
-        }
     };
     
     const generateManifestPDF = async () => {
