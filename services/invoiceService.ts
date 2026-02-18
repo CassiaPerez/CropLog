@@ -71,47 +71,6 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<SyncS
   const existingMap = new Map();
   allExistingInvoices.forEach(inv => existingMap.set(inv.number, inv));
 
-  const { data: unassignedInvoices } = await supabase
-    .from('invoices')
-    .select('id, number')
-    .eq('is_assigned', false)
-    .eq('is_cancelled', false);
-
-  const toCancel = (unassignedInvoices || []).filter(
-    inv => !apiInvoiceNumbers.includes(inv.number)
-  );
-
-  if (toCancel.length > 0) {
-    console.log(`🚫 Marcando ${toCancel.length} notas como canceladas...`);
-    const idsToCancel = toCancel.map(inv => inv.id);
-    const cancelBatchSize = 50;
-
-    for (let i = 0; i < idsToCancel.length; i += cancelBatchSize) {
-      const batch = idsToCancel.slice(i, i + cancelBatchSize);
-      const { error: cancelError } = await supabase
-        .from('invoices')
-        .update({
-          is_cancelled: true,
-          cancelled_at: new Date().toISOString(),
-          last_modified_at: new Date().toISOString()
-        })
-        .in('id', batch);
-
-      if (cancelError) {
-        console.error('❌ Erro ao marcar notas como canceladas:', cancelError.message);
-        logError('Erro ao cancelar lote', cancelError);
-        summary.errorsCount += batch.length;
-      } else {
-        summary.cancelledCount += batch.length;
-        console.log(`✅ Lote ${i / cancelBatchSize + 1}: ${batch.length} notas canceladas`);
-      }
-    }
-
-    if (summary.cancelledCount > 0) {
-      console.log(`✅ Total: ${summary.cancelledCount} notas marcadas como canceladas`);
-    }
-  }
-
   const invoicesToSave: { invoice: Invoice; hash: string; isNew: boolean }[] = [];
 
   for (const invoice of invoices) {
