@@ -1717,6 +1717,8 @@ function App() {
     const [sourceCity, setSourceCity] = useState(map.sourceCity || 'Matriz Central');
     const [vehiclePlate, setVehiclePlate] = useState(map.vehiclePlate || '');
     const [googleMapsLink, setGoogleMapsLink] = useState(map.googleMapsLink || '');
+    const hasMountedRef = useRef(false);
+    const isManualLinkRef = useRef(false);
 
     // Autocomplete State
     const [carrierSuggestions, setCarrierSuggestions] = useState<string[]>([]);
@@ -1747,6 +1749,7 @@ function App() {
     }, []);
 
     const handleGoogleMapsLinkChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        isManualLinkRef.current = e.target.value.length > 0;
         setGoogleMapsLink(e.target.value);
     }, []);
 
@@ -1759,15 +1762,16 @@ function App() {
     const totalWeight = map.invoices.reduce((acc, i) => acc + i.totalWeight, 0);
     const totalItems = map.invoices.reduce((acc, i) => acc + i.items.reduce((sum, item) => sum + item.quantity, 0), 0);
 
-    // Auto-generate Google Maps link when Source and Route (Destination) change
     useEffect(() => {
+        if (!hasMountedRef.current) {
+            hasMountedRef.current = true;
+            isManualLinkRef.current = (map.googleMapsLink || '').length > 0;
+            return;
+        }
+        if (isManualLinkRef.current) return;
         if (sourceCity && route) {
-            // Encode the parameters for the URL
             const origin = encodeURIComponent(sourceCity);
             const destination = encodeURIComponent(route);
-
-            // Standard Google Maps Directory Link
-            // https://www.google.com/maps/dir/?api=1&origin={origin}&destination={destination}
             const newLink = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
             setGoogleMapsLink(newLink);
         }
