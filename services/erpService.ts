@@ -329,14 +329,21 @@ export const fetchErpInvoices = async (
     const limitPerPage = firstPage.limit || 100;
     const totalPages = Math.ceil(totalRecords / limitPerPage);
 
-    console.log(`📊 Total de registros na API: ${totalRecords}`);
-    console.log(`📄 Total de páginas disponíveis: ${totalPages}`);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`📊 INFORMAÇÕES DA API`);
+    console.log(`${'='.repeat(60)}`);
+    console.log(`📦 Total de registros na API: ${totalRecords.toLocaleString()}`);
+    console.log(`📄 Limite por página: ${limitPerPage.toLocaleString()} registros`);
+    console.log(`📖 Total de páginas: ${totalPages}`);
+    console.log(`${'='.repeat(60)}`);
 
     if (syncType === 'full') {
       console.log(`🔥 MODO COMPLETO: Todas as ${totalPages} páginas serão processadas!`);
+      console.log(`⏱️ Isso vai buscar ${totalRecords.toLocaleString()} registros da API`);
     } else {
       console.log(`⚡ MODO INCREMENTAL: Pode parar cedo ao encontrar notas já sincronizadas`);
     }
+    console.log(`${'='.repeat(60)}\n`);
 
     if (totalRecords === 0) {
       console.warn('⚠️ Nenhum dado retornado da API ERP');
