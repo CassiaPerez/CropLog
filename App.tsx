@@ -382,13 +382,18 @@ function App() {
             setShowSyncProgress(false);
           }, 2000);
 
+          const incompleteSyncWarning = (syncProgress && syncProgress.currentPage < syncProgress.totalPages)
+            ? `\n\n⚠️ ATENÇÃO: Apenas ${syncProgress.currentPage}/${syncProgress.totalPages} páginas foram processadas!\nUse "Sincronização Completa" para processar todas.`
+            : '';
+
           const summaryMessage = [
-            `✅ Sincronização concluída com sucesso!`,
+            `✅ Sincronização concluída!`,
             `🆕 Novas: ${syncSummary.insertedCount}`,
             `🔄 Atualizadas: ${syncSummary.updatedCount}`,
             `⏭️ Sem mudanças: ${syncSummary.unchangedCount}`,
             syncSummary.cancelledCount > 0 ? `🚫 Canceladas: ${syncSummary.cancelledCount}` : '',
-            syncSummary.errorsCount > 0 ? `❌ Erros: ${syncSummary.errorsCount}` : ''
+            syncSummary.errorsCount > 0 ? `❌ Erros: ${syncSummary.errorsCount}` : '',
+            incompleteSyncWarning
           ].filter(Boolean).join('\n');
 
           alert(summaryMessage);
@@ -1285,7 +1290,17 @@ function App() {
                             <RefreshCcw size={20} className={isSyncing ? "animate-spin" : ""}/> Completa
                          </button>
                        </div>
-                       <p className="text-sm text-text-light pl-2 mt-4">
+                       <div className="mt-4 space-y-2">
+                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                           <p className="text-sm text-blue-900 font-semibold mb-1">⚡ Sincronização Incremental</p>
+                           <p className="text-xs text-blue-700">Para automaticamente ao encontrar notas já sincronizadas. Rápida, mas pode não pegar todas as notas se houver gaps.</p>
+                         </div>
+                         <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+                           <p className="text-sm text-orange-900 font-semibold mb-1">🔥 Sincronização Completa</p>
+                           <p className="text-xs text-orange-700">Processa TODAS as páginas da API, sem exceções. Garante que todas as notas sejam puxadas. Use quando precisar de 100% dos dados.</p>
+                         </div>
+                       </div>
+                       <p className="text-sm text-text-light pl-2 mt-4 hidden">
                          Incremental: para automaticamente ao encontrar notas já sincronizadas (rápido). Completa: sincroniza todas as páginas disponíveis (lento).
                        </p>
 

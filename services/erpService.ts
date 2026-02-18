@@ -332,6 +332,12 @@ export const fetchErpInvoices = async (
     console.log(`📊 Total de registros na API: ${totalRecords}`);
     console.log(`📄 Total de páginas disponíveis: ${totalPages}`);
 
+    if (syncType === 'full') {
+      console.log(`🔥 MODO COMPLETO: Todas as ${totalPages} páginas serão processadas!`);
+    } else {
+      console.log(`⚡ MODO INCREMENTAL: Pode parar cedo ao encontrar notas já sincronizadas`);
+    }
+
     if (totalRecords === 0) {
       console.warn('⚠️ Nenhum dado retornado da API ERP');
       await completeSyncHistory(syncHistoryId, 0, 0);
@@ -462,17 +468,31 @@ export const fetchErpInvoices = async (
     }
 
     const finalPageCount = page - 1;
-    console.log(`📊 Páginas processadas: ${finalPageCount}/${totalPages}`);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`📊 RESULTADO DA SINCRONIZAÇÃO ${syncType.toUpperCase()}`);
+    console.log(`${'='.repeat(60)}`);
+    console.log(`📄 Páginas processadas: ${finalPageCount}/${totalPages}`);
+
+    if (finalPageCount < totalPages) {
+      console.warn(`⚠️ ATENÇÃO: ${totalPages - finalPageCount} páginas NÃO foram processadas!`);
+      console.warn(`💡 Use "Sincronização Completa" para processar todas as páginas.`);
+    } else {
+      console.log(`✅ TODAS as ${totalPages} páginas foram processadas com sucesso!`);
+    }
+
     console.log(`📦 Total de notas encontradas: ${allInvoices.length}`);
     console.log(`🆕 Novas: ${stats.newInvoices} | 🔄 Atualizadas: ${stats.updatedInvoices} | ⏭️ Inalteradas: ${stats.unchangedInvoices}`);
+    console.log(`${'='.repeat(60)}\n`);
 
     if (onProgress) {
       onProgress({
         currentPage: finalPageCount,
-        totalPages: finalPageCount,
+        totalPages: totalPages,
         processedInvoices: allInvoices.length,
         percentage: 100,
-        status: 'Salvando no banco de dados...',
+        status: finalPageCount < totalPages
+          ? `⚠️ Processadas ${finalPageCount}/${totalPages} páginas - Salvando...`
+          : 'Salvando no banco de dados...',
         ...stats
       });
     }
