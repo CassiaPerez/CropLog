@@ -58,6 +58,7 @@ function App() {
   const [filterEndDate, setFilterEndDate] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [showCancelledInvoices, setShowCancelledInvoices] = useState(false);
 
   // Selection State
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
@@ -101,6 +102,10 @@ function App() {
     loadLoadMaps();
     loadApiConfig();
   }, []);
+
+  useEffect(() => {
+    loadInvoices();
+  }, [showCancelledInvoices]);
 
   useEffect(() => {
     if (!activeApiConfig?.base_url || !activeApiConfig?.auto_sync_enabled) return;
@@ -155,7 +160,7 @@ function App() {
   const loadInvoices = async () => {
     try {
       console.log('Carregando notas do banco de dados...');
-      const loadedInvoices = await loadInvoicesFromDatabase();
+      const loadedInvoices = await loadInvoicesFromDatabase(showCancelledInvoices);
       console.log(`Carregadas ${loadedInvoices.length} notas do banco`);
       setInvoices(loadedInvoices);
     } catch (error) {
@@ -1186,7 +1191,20 @@ function App() {
                   className="w-full px-4 py-3 bg-background rounded-xl border-2 border-transparent focus:border-primary/20 outline-none transition-all"
                 />
               </div>
-              <div className="md:col-span-3 flex justify-end">
+              <div className="md:col-span-3 flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={showCancelledInvoices}
+                    onChange={(e) => setShowCancelledInvoices(e.target.checked)}
+                    className="w-5 h-5 rounded border-2 border-border bg-background checked:bg-orange-500 checked:border-orange-500 transition-all cursor-pointer"
+                  />
+                  <span className="text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors flex items-center gap-2">
+                    <XCircle size={16} className="text-orange-500" />
+                    Mostrar notas canceladas
+                  </span>
+                </label>
+                <div className="flex-1"></div>
                 <button
                   onClick={clearFilters}
                   className="flex items-center gap-2 px-6 py-2 bg-slate-100 hover:bg-slate-200 text-text-secondary rounded-xl font-bold transition-all"
@@ -1226,7 +1244,13 @@ function App() {
                             <td className="p-6">
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-text-main text-lg">{inv.number}</span>
-                                {inv.isModified && (
+                                {inv.isCancelled && (
+                                  <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-lg flex items-center gap-1">
+                                    <XCircle size={12} />
+                                    CANCELADA
+                                  </span>
+                                )}
+                                {inv.isModified && !inv.isCancelled && (
                                   <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-lg flex items-center gap-1">
                                     <AlertTriangle size={12} />
                                     ALTERADA

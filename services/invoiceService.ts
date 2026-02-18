@@ -224,9 +224,9 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<SyncS
   return summary;
 }
 
-export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
+export async function loadInvoicesFromDatabase(includeCancelled: boolean = false): Promise<Invoice[]> {
   try {
-    const { data: invoices, error } = await supabase
+    let query = supabase
       .from('invoices')
       .select(`
         *,
@@ -239,9 +239,13 @@ export async function loadInvoicesFromDatabase(): Promise<Invoice[]> {
           weight_kg,
           quantity_picked
         )
-      `)
-      .eq('is_cancelled', false)
-      .order('document_date', { ascending: false });
+      `);
+
+    if (!includeCancelled) {
+      query = query.eq('is_cancelled', false);
+    }
+
+    const { data: invoices, error } = await query.order('document_date', { ascending: false });
 
     if (error) throw error;
 
