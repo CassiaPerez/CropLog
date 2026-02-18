@@ -2046,6 +2046,102 @@ function App() {
         setVerifiedInvoices(next);
     };
 
+    const handleDownloadConferencia = () => {
+        const doc = new jsPDF();
+
+        try {
+            doc.setFillColor(15, 23, 42);
+            doc.rect(0, 0, 210, 36, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(20);
+            doc.setFont(undefined, 'bold');
+            doc.text('Lista de Conferência', 14, 16);
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Mapa: ${map.code}`, 14, 24);
+            doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 30);
+            doc.setTextColor(200, 200, 200);
+            doc.text(`Total de Notas: ${map.invoices.length} | Peso Total: ${map.invoices.reduce((a, i) => a + i.totalWeight, 0).toFixed(2)} kg`, 100, 24);
+            doc.text(`Volumes Total: ${map.invoices.reduce((a, i) => a + i.items.reduce((b, it) => b + it.quantity, 0), 0)}`, 100, 30);
+        } catch {
+            doc.setFontSize(20);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Lista de Conferência', 14, 20);
+        }
+
+        doc.setTextColor(0, 0, 0);
+        let yPos = 44;
+
+        map.invoices.forEach((inv, idx) => {
+            if (yPos > 250) {
+                doc.addPage();
+                yPos = 14;
+            }
+
+            doc.setFillColor(241, 245, 249);
+            doc.rect(8, yPos - 4, 194, 18, 'F');
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(15, 23, 42);
+            doc.text(`${idx + 1}. NF ${inv.number}`, 12, yPos + 4);
+            doc.setFont(undefined, 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(80, 80, 80);
+            doc.text(`${inv.customerName} — ${inv.customerCity}`, 12, yPos + 10);
+            doc.text(`Peso: ${inv.totalWeight.toFixed(2)} kg | Volumes: ${inv.items.reduce((a, i) => a + i.quantity, 0)} | Valor: R$ ${inv.totalValue.toFixed(2)}`, 100, yPos + 7);
+            yPos += 22;
+
+            const tableData = inv.items.map(item => [
+                item.sku,
+                item.description,
+                `${item.quantity} ${item.unit}`,
+                `${item.weightKg.toFixed(2)} kg`,
+                '',
+            ]);
+
+            autoTable(doc, {
+                startY: yPos,
+                head: [['SKU', 'Descrição', 'Qtd / UN', 'Peso Unit.', 'Conferido']],
+                body: tableData,
+                theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 3 },
+                headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 8 },
+                columnStyles: {
+                    0: { cellWidth: 28 },
+                    1: { cellWidth: 80 },
+                    2: { cellWidth: 24, halign: 'center' },
+                    3: { cellWidth: 24, halign: 'center' },
+                    4: { cellWidth: 24, halign: 'center' },
+                },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                margin: { left: 8, right: 8 },
+                didDrawCell: (data) => {
+                    if (data.column.index === 4 && data.section === 'body') {
+                        const { x, y, width, height } = data.cell;
+                        const cx = x + width / 2;
+                        const cy = y + height / 2;
+                        const size = 4;
+                        doc.setDrawColor(100, 100, 100);
+                        doc.setLineWidth(0.4);
+                        doc.rect(cx - size / 2, cy - size / 2, size, size);
+                    }
+                },
+            });
+
+            yPos = (doc as any).lastAutoTable.finalY + 10;
+        });
+
+        const pageCount = doc.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8);
+            doc.setTextColor(150, 150, 150);
+            doc.text(`Página ${i} de ${pageCount}`, 195, 290, { align: 'right' });
+        }
+
+        doc.save(`conferencia-${map.code}-${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
     const finishSeparation = async () => {
         // Safe check for current user even if state was lost
         const userId = currentUser ? currentUser.id : 'system';
@@ -2081,6 +2177,9 @@ function App() {
                         <p className="text-sm font-bold text-text-light uppercase">Progresso</p>
                         <p className="text-2xl font-black text-text-main">{verifiedInvoices.size} / {map.invoices.length}</p>
                     </div>
+                    <button onClick={handleDownloadConferencia} className="px-8 py-5 bg-white border-2 border-slate-200 text-text-main rounded-2xl font-bold text-xl hover:border-primary hover:text-primary transition-all flex items-center gap-3">
+                        <Printer size={24}/> Imprimir
+                    </button>
                     <button onClick={finishSeparation} className="px-10 py-5 bg-accent text-white rounded-2xl font-bold text-xl shadow-lg hover:bg-emerald-600 transition-all flex items-center gap-3">
                         <ClipboardCheck size={28}/> Finalizar
                     </button>
