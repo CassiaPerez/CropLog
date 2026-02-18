@@ -675,11 +675,22 @@ function App() {
 
   const handleSaveEditedMap = async (updatedMap: LoadMap) => {
     try {
+      // Marcar as notas como atribuídas no banco de dados
+      const invoiceIds = updatedMap.invoices.map(inv => inv.id);
+      await supabase
+        .from('invoices')
+        .update({ is_assigned: true })
+        .in('id', invoiceIds);
+
+      // Salvar o mapa atualizado
       await saveLoadMapToDatabase(updatedMap);
+
+      // Recarregar os dados
       const updatedMaps = await loadLoadMapsFromDatabase();
       setLoadMaps(updatedMaps);
       const updatedInvoices = await loadInvoicesFromDatabase();
       setInvoices(updatedInvoices);
+
       setIsEditLoadMapModalOpen(false);
       setEditingLoadMap(null);
       alert('Notas adicionadas com sucesso!');
