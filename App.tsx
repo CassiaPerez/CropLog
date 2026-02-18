@@ -93,6 +93,9 @@ function App() {
   // --- Effects ---
 
   useEffect(() => {
+    // Reset sync state on app load (in case page was reloaded during sync)
+    setSyncInProgress(false);
+
     fetchUsers();
     loadInvoices();
     loadLoadMaps();
@@ -1285,6 +1288,20 @@ function App() {
                        <p className="text-sm text-text-light pl-2 mt-4">
                          Incremental: para automaticamente ao encontrar notas já sincronizadas (rápido). Completa: sincroniza todas as páginas disponíveis (lento).
                        </p>
+
+                       <button
+                         onClick={() => {
+                           setSyncInProgress(false);
+                           alert('✅ Estado de sincronização resetado com sucesso!');
+                         }}
+                         className="mt-4 w-full px-4 py-3 bg-gray-50 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-100 transition-all flex items-center justify-center gap-2"
+                       >
+                         <AlertOctagon size={18} /> Resetar Estado de Sincronização
+                       </button>
+                       <p className="text-xs text-text-light pl-2 mt-2">
+                         Use este botão se aparecer a mensagem "Já existe uma sincronização em andamento"
+                       </p>
+
                        {syncError && (
                            <div className="p-4 bg-red-50 text-red-600 font-bold rounded-xl flex items-center gap-3 mt-4">
                               <AlertTriangle size={20} /> {syncError}
