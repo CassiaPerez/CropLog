@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Plus, X } from 'lucide-react';
 import { Layout } from './components/Layout';
 import { ProductModal } from './components/ProductModal';
 import { SyncProgressModal } from './components/SyncProgressModal';
