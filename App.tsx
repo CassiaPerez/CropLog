@@ -260,23 +260,28 @@ function App() {
         if (!query) return null;
         if (query.includes('output=embed')) return query;
         if (query.startsWith('http')) {
-             try {
+            try {
                 const url = new URL(query);
+                const origin = url.searchParams.get('origin');
+                const destination = url.searchParams.get('destination');
+                if (origin && destination) {
+                    return `https://maps.google.com/maps?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(destination)}&output=embed`;
+                }
                 if (url.pathname.includes('/dir/')) {
-                     const parts = url.pathname.split('/dir/');
-                     if (parts[1]) {
+                    const parts = url.pathname.split('/dir/');
+                    if (parts[1]) {
                         const pathParts = parts[1].split('/').filter(p => p);
                         if (pathParts.length >= 2) {
-                             return `https://maps.google.com/maps?saddr=${pathParts[0]}&daddr=${pathParts[1]}&output=embed`;
+                            return `https://maps.google.com/maps?saddr=${pathParts[0]}&daddr=${pathParts[1]}&output=embed`;
                         }
-                     }
+                    }
                 }
                 if (url.searchParams.has('q')) query = url.searchParams.get('q')!;
-                else if (url.searchParams.has('destination')) query = url.searchParams.get('destination')!;
+                else if (destination) query = destination;
                 else if (fallbackRoute) query = fallbackRoute;
-             } catch (e) {
-                 if (fallbackRoute) query = fallbackRoute;
-             }
+            } catch (e) {
+                if (fallbackRoute) query = fallbackRoute;
+            }
         }
         return `https://maps.google.com/maps?q=${encodeURIComponent(query)}&t=&z=13&ie=UTF8&iwloc=&output=embed`;
     } catch {
@@ -1981,6 +1986,41 @@ function App() {
                      <textarea value={notes} onChange={handleNotesChange} className="w-full p-5 bg-white rounded-2xl border-2 border-transparent focus:border-primary/20 text-lg font-medium text-text-main outline-none shadow-soft min-h-[140px]" placeholder="Observações..." />
                  </div>
             </div>
+
+            {/* Google Maps Preview */}
+            {(() => {
+                const previewEmbedUrl = getEmbedUrl(googleMapsLink, route);
+                return previewEmbedUrl ? (
+                    <div className="bg-white rounded-3xl shadow-soft border border-border/50 overflow-hidden">
+                        <div className="flex items-center justify-between px-8 py-5 border-b border-border/50">
+                            <div className="flex items-center gap-3">
+                                <MapIcon size={22} className="text-primary" />
+                                <h3 className="text-xl font-bold text-text-main">Visualização do Percurso</h3>
+                            </div>
+                            <a
+                                href={googleMapsLink || `https://www.google.com/maps/search/${encodeURIComponent(route)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 text-sm font-bold text-primary hover:text-primaryLight transition-colors"
+                            >
+                                <ExternalLink size={16} /> Abrir no Google Maps
+                            </a>
+                        </div>
+                        <div className="w-full h-72">
+                            <iframe
+                                width="100%"
+                                height="100%"
+                                frameBorder="0"
+                                style={{ border: 0 }}
+                                src={previewEmbedUrl}
+                                allowFullScreen
+                                loading="lazy"
+                                referrerPolicy="no-referrer-when-downgrade"
+                            />
+                        </div>
+                    </div>
+                ) : null;
+            })()}
 
             {/* Invoices List */}
             <div className="bg-white rounded-3xl shadow-soft p-10 border border-border/50">
