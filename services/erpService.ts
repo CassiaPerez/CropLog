@@ -49,7 +49,7 @@ interface ErpApiItem {
   fator_conv: number;
   und_alt: string;
   quantidade_kgl: number;
-  num_lote?: string;
+  num_lote?: string | number | null;
 }
 
 interface ErpApiResponse {
@@ -231,7 +231,9 @@ const processErpItems = (items: ErpApiItem[]): Invoice[] => {
       description: item.descricao || 'Sem descrição',
       quantity: item.quantidade || 0,
       unit: item.unidade || 'UN',
-      lote: item.num_lote || undefined,
+      lote: item.num_lote != null && String(item.num_lote).trim() !== '' && String(item.num_lote).trim() !== '0'
+        ? String(item.num_lote).trim()
+        : undefined,
       weightKg: item.quantidade_kgl || 0,
       quantityPicked: 0,
     });
