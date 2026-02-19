@@ -49,6 +49,7 @@ interface ErpApiItem {
   fator_conv: number;
   und_alt: string;
   quantidade_kgl: number;
+  num_lote?: string;
 }
 
 interface ErpApiResponse {
@@ -230,7 +231,7 @@ const processErpItems = (items: ErpApiItem[]): Invoice[] => {
       description: item.descricao || 'Sem descrição',
       quantity: item.quantidade || 0,
       unit: item.unidade || 'UN',
-      lote: item.nro_pedido || undefined,
+      lote: item.num_lote || undefined,
       weightKg: item.quantidade_kgl || 0,
       quantityPicked: 0,
     });
