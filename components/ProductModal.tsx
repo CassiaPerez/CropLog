@@ -45,6 +45,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({ invoice, onClose }) 
               <tr className="border-b border-[#e7ebf3] text-[#4e6797]">
                 <th className="py-4 px-8 text-sm font-bold uppercase tracking-wider">SKU</th>
                 <th className="py-4 px-8 text-sm font-bold uppercase tracking-wider">Descrição</th>
+                <th className="py-4 px-8 text-sm font-bold uppercase tracking-wider text-center">Lote</th>
                 <th className="py-4 px-8 text-sm font-bold uppercase tracking-wider text-center">Unidade</th>
                 <th className="py-4 px-8 text-sm font-bold uppercase tracking-wider text-right">Qtd</th>
                 <th className="py-4 px-8 text-sm font-bold uppercase tracking-wider text-right">Peso (kg)</th>
@@ -55,7 +56,16 @@ export const ProductModal: React.FC<ProductModalProps> = ({ invoice, onClose }) 
                 <tr key={idx} className="hover:bg-gray-50 transition-colors">
                   <td className="py-5 px-8 text-base font-bold text-gray-600 font-mono">{item.sku}</td>
                   <td className="py-5 px-8 text-base font-medium text-[#0e121b]">{item.description}</td>
-                  <td className="py-5 px-8 text-center text-base text-gray-500">{item.unit}</td>
+                  <td className="py-5 px-8 text-center">
+                    {item.lote ? (
+                      <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-lg font-mono text-sm font-bold">{item.lote}</span>
+                    ) : (
+                      <span className="text-gray-400 text-sm">—</span>
+                    )}
+                  </td>
+                  <td className="py-5 px-8 text-center">
+                    <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-lg text-sm font-bold">{item.unit}</span>
+                  </td>
                   <td className="py-5 px-8 text-right text-base font-bold text-[#0e121b]">{item.quantity}</td>
                   <td className="py-5 px-8 text-right text-base text-gray-600">{(item.weightKg * item.quantity).toFixed(2)}</td>
                 </tr>
@@ -63,7 +73,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({ invoice, onClose }) 
             </tbody>
             <tfoot className="bg-gray-50 border-t border-[#e7ebf3]">
                  <tr>
-                    <td colSpan={3} className="py-5 px-8 text-base font-bold text-[#0e121b] text-right">Totais:</td>
+                    <td colSpan={4} className="py-5 px-8 text-base font-bold text-[#0e121b] text-right">Totais:</td>
                     <td className="py-5 px-8 text-right text-base font-bold text-primary">
                         {invoice.items.reduce((acc, i) => acc + i.quantity, 0)}
                     </td>

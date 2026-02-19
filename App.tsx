@@ -744,13 +744,13 @@ function App() {
     }
   };
 
-  const handleMoveInvoice = (mapId: string, invoiceIndex: number, direction: -1 | 1) => {
+  const handleReorderInvoice = (mapId: string, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
     setLoadMaps(prev => prev.map(m => {
       if (m.id !== mapId) return m;
       const invs = [...m.invoices];
-      const targetIndex = invoiceIndex + direction;
-      if (targetIndex < 0 || targetIndex >= invs.length) return m;
-      [invs[invoiceIndex], invs[targetIndex]] = [invs[targetIndex], invs[invoiceIndex]];
+      const [moved] = invs.splice(fromIndex, 1);
+      invs.splice(toIndex, 0, moved);
       return { ...m, invoices: invs };
     }));
   };
@@ -1744,6 +1744,8 @@ function App() {
             return next;
         });
     };
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const draggedIndexRef = useRef<number | null>(null);
 
     // Autocomplete State
     const [carrierSuggestions, setCarrierSuggestions] = useState<string[]>([]);
@@ -2058,7 +2060,7 @@ function App() {
                     <table className="w-full text-left">
                         <thead className="border-b border-border">
                             <tr>
-                                <th className="py-4 px-2 text-base font-bold text-text-light uppercase w-20 text-center">Ordem</th>
+                                <th className="py-4 px-3 w-10"></th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">NF</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Data NF</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Cliente</th>
@@ -2070,33 +2072,35 @@ function App() {
                         <tbody>
                             {map.invoices.map((inv, idx) => {
                                 const isExpanded = expandedInvoiceIds.has(inv.id);
+                                const isDragOver = dragOverIndex === idx;
                                 return (
                                     <React.Fragment key={inv.id}>
-                                        <tr className="border-b border-border hover:bg-slate-50/50 transition-colors">
-                                            <td className="py-4 px-2 text-center">
-                                                <div className="flex flex-col items-center gap-1">
-                                                    <button
-                                                        onClick={() => handleMoveInvoice(map.id, idx, -1)}
-                                                        disabled={idx === 0}
-                                                        className="p-1 rounded text-text-light hover:text-primary hover:bg-slate-100 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                                        title="Mover para cima"
-                                                    >
-                                                        <ChevronUp size={18} />
-                                                    </button>
-                                                    <span className="text-xs font-bold text-text-light">{idx + 1}</span>
-                                                    <button
-                                                        onClick={() => handleMoveInvoice(map.id, idx, 1)}
-                                                        disabled={idx === map.invoices.length - 1}
-                                                        className="p-1 rounded text-text-light hover:text-primary hover:bg-slate-100 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                                        title="Mover para baixo"
-                                                    >
-                                                        <ChevronDown size={18} />
-                                                    </button>
+                                        <tr
+                                            draggable
+                                            onDragStart={() => { draggedIndexRef.current = idx; }}
+                                            onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx); }}
+                                            onDragLeave={() => setDragOverIndex(null)}
+                                            onDrop={() => {
+                                                if (draggedIndexRef.current !== null) {
+                                                    handleReorderInvoice(map.id, draggedIndexRef.current, idx);
+                                                }
+                                                draggedIndexRef.current = null;
+                                                setDragOverIndex(null);
+                                            }}
+                                            onDragEnd={() => { draggedIndexRef.current = null; setDragOverIndex(null); }}
+                                            className={`border-b border-border transition-all cursor-grab active:cursor-grabbing ${isDragOver ? 'bg-blue-50 border-blue-300 shadow-inner' : 'hover:bg-slate-50/50'}`}
+                                        >
+                                            <td className="py-5 px-3 text-center">
+                                                <div className="flex flex-col items-center gap-0.5 text-slate-300 hover:text-slate-500 transition-colors">
+                                                    <div className="w-4 border-t-2 border-current rounded"></div>
+                                                    <div className="w-4 border-t-2 border-current rounded"></div>
+                                                    <div className="w-4 border-t-2 border-current rounded"></div>
                                                 </div>
                                             </td>
                                             <td className="py-5 px-4">
                                                 <button
-                                                    onClick={() => toggleExpandInvoice(inv.id)}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    onClick={(e) => { e.stopPropagation(); toggleExpandInvoice(inv.id); }}
                                                     className="flex items-center gap-2 text-xl font-bold text-text-main hover:text-primary transition-colors"
                                                 >
                                                     {isExpanded ? <ChevronUp size={18} className="text-primary" /> : <ChevronDown size={18} className="text-text-light" />}
@@ -2111,7 +2115,8 @@ function App() {
                                             <td className="py-5 px-4 text-xl font-mono font-bold text-text-main text-right">{inv.totalWeight} kg</td>
                                             <td className="py-5 px-4 text-center">
                                                 <button
-                                                    onClick={() => handleRemoveInvoiceFromMap(map.id, inv.id)}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    onClick={(e) => { e.stopPropagation(); handleRemoveInvoiceFromMap(map.id, inv.id); }}
                                                     className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                                     title="Remover nota do mapa"
                                                 >
