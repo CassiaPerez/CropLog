@@ -25,6 +25,7 @@ export interface Product {
   description: string;
   quantity: number;
   unit: string;
+  lote?: string;
   weightKg: number;
   quantityPicked?: number;
 }

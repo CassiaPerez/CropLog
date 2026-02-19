@@ -141,6 +141,7 @@ export async function saveInvoicesToDatabase(invoices: Invoice[]): Promise<SyncS
           description: item.description,
           quantity: item.quantity,
           unit: item.unit,
+          lote: item.lote || null,
           weight_kg: item.weightKg,
           quantity_picked: item.quantityPicked
         }));
@@ -195,6 +196,7 @@ export async function loadInvoicesFromDatabase(includeCancelled: boolean = false
           description,
           quantity,
           unit,
+          lote,
           weight_kg,
           quantity_picked
         )
@@ -227,6 +229,7 @@ export async function loadInvoicesFromDatabase(includeCancelled: boolean = false
         description: item.description,
         quantity: item.quantity,
         unit: item.unit,
+        lote: item.lote || undefined,
         weightKg: item.weight_kg,
         quantityPicked: item.quantity_picked || 0
       }))

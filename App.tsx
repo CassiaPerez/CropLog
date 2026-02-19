@@ -744,6 +744,17 @@ function App() {
     }
   };
 
+  const handleMoveInvoice = (mapId: string, invoiceIndex: number, direction: -1 | 1) => {
+    setLoadMaps(prev => prev.map(m => {
+      if (m.id !== mapId) return m;
+      const invs = [...m.invoices];
+      const targetIndex = invoiceIndex + direction;
+      if (targetIndex < 0 || targetIndex >= invs.length) return m;
+      [invs[invoiceIndex], invs[targetIndex]] = [invs[targetIndex], invs[invoiceIndex]];
+      return { ...m, invoices: invs };
+    }));
+  };
+
   // --- Views ---
 
   const LoginView = () => {
@@ -1725,6 +1736,15 @@ function App() {
     const hasMountedRef = useRef(false);
     const isManualLinkRef = useRef(false);
 
+    const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Set<string>>(new Set());
+    const toggleExpandInvoice = (id: string) => {
+        setExpandedInvoiceIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
     // Autocomplete State
     const [carrierSuggestions, setCarrierSuggestions] = useState<string[]>([]);
     const [showCarrierSuggestions, setShowCarrierSuggestions] = useState(false);
@@ -2038,6 +2058,7 @@ function App() {
                     <table className="w-full text-left">
                         <thead className="border-b border-border">
                             <tr>
+                                <th className="py-4 px-2 text-base font-bold text-text-light uppercase w-20 text-center">Ordem</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">NF</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Data NF</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Cliente</th>
@@ -2046,27 +2067,101 @@ function App() {
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase text-center">Ações</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-border">
-                            {map.invoices.map(inv => (
-                                <tr key={inv.id}>
-                                    <td className="py-6 px-4 text-xl font-bold text-text-main">{inv.number}</td>
-                                    <td className="py-6 px-4 text-base text-text-secondary">
-                                        {new Date(inv.documentDate).toLocaleDateString('pt-BR')}
-                                    </td>
-                                    <td className="py-6 px-4 text-xl font-medium text-text-secondary">{inv.customerName}</td>
-                                    <td className="py-6 px-4 text-xl font-mono font-bold text-text-main text-right">{formatCurrency(inv.totalValue)}</td>
-                                    <td className="py-6 px-4 text-xl font-mono font-bold text-text-main text-right">{inv.totalWeight} kg</td>
-                                    <td className="py-6 px-4 text-center">
-                                        <button
-                                            onClick={() => handleRemoveInvoiceFromMap(map.id, inv.id)}
-                                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                            title="Remover nota do mapa"
-                                        >
-                                            <X size={20} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
+                        <tbody>
+                            {map.invoices.map((inv, idx) => {
+                                const isExpanded = expandedInvoiceIds.has(inv.id);
+                                return (
+                                    <React.Fragment key={inv.id}>
+                                        <tr className="border-b border-border hover:bg-slate-50/50 transition-colors">
+                                            <td className="py-4 px-2 text-center">
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <button
+                                                        onClick={() => handleMoveInvoice(map.id, idx, -1)}
+                                                        disabled={idx === 0}
+                                                        className="p-1 rounded text-text-light hover:text-primary hover:bg-slate-100 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                                                        title="Mover para cima"
+                                                    >
+                                                        <ChevronUp size={18} />
+                                                    </button>
+                                                    <span className="text-xs font-bold text-text-light">{idx + 1}</span>
+                                                    <button
+                                                        onClick={() => handleMoveInvoice(map.id, idx, 1)}
+                                                        disabled={idx === map.invoices.length - 1}
+                                                        className="p-1 rounded text-text-light hover:text-primary hover:bg-slate-100 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                                                        title="Mover para baixo"
+                                                    >
+                                                        <ChevronDown size={18} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            <td className="py-5 px-4">
+                                                <button
+                                                    onClick={() => toggleExpandInvoice(inv.id)}
+                                                    className="flex items-center gap-2 text-xl font-bold text-text-main hover:text-primary transition-colors"
+                                                >
+                                                    {isExpanded ? <ChevronUp size={18} className="text-primary" /> : <ChevronDown size={18} className="text-text-light" />}
+                                                    {inv.number}
+                                                </button>
+                                            </td>
+                                            <td className="py-5 px-4 text-base text-text-secondary">
+                                                {new Date(inv.documentDate).toLocaleDateString('pt-BR')}
+                                            </td>
+                                            <td className="py-5 px-4 text-xl font-medium text-text-secondary">{inv.customerName}</td>
+                                            <td className="py-5 px-4 text-xl font-mono font-bold text-text-main text-right">{formatCurrency(inv.totalValue)}</td>
+                                            <td className="py-5 px-4 text-xl font-mono font-bold text-text-main text-right">{inv.totalWeight} kg</td>
+                                            <td className="py-5 px-4 text-center">
+                                                <button
+                                                    onClick={() => handleRemoveInvoiceFromMap(map.id, inv.id)}
+                                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    title="Remover nota do mapa"
+                                                >
+                                                    <X size={20} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {isExpanded && (
+                                            <tr className="bg-slate-50 border-b border-border">
+                                                <td colSpan={7} className="px-8 py-4">
+                                                    <div className="rounded-xl overflow-hidden border border-slate-200">
+                                                        <table className="w-full text-sm">
+                                                            <thead className="bg-slate-100">
+                                                                <tr>
+                                                                    <th className="py-2 px-4 text-left font-bold text-text-light uppercase text-xs">SKU</th>
+                                                                    <th className="py-2 px-4 text-left font-bold text-text-light uppercase text-xs">Descrição</th>
+                                                                    <th className="py-2 px-4 text-center font-bold text-text-light uppercase text-xs">Lote</th>
+                                                                    <th className="py-2 px-4 text-center font-bold text-text-light uppercase text-xs">Unidade</th>
+                                                                    <th className="py-2 px-4 text-right font-bold text-text-light uppercase text-xs">Qtd</th>
+                                                                    <th className="py-2 px-4 text-right font-bold text-text-light uppercase text-xs">Peso</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-200 bg-white">
+                                                                {inv.items.map((item, itemIdx) => (
+                                                                    <tr key={itemIdx} className="hover:bg-slate-50">
+                                                                        <td className="py-2 px-4 font-mono text-text-secondary">{item.sku}</td>
+                                                                        <td className="py-2 px-4 text-text-main font-medium">{item.description}</td>
+                                                                        <td className="py-2 px-4 text-center">
+                                                                            {item.lote ? (
+                                                                                <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md font-mono text-xs font-bold">{item.lote}</span>
+                                                                            ) : (
+                                                                                <span className="text-text-light text-xs">—</span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="py-2 px-4 text-center">
+                                                                            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md text-xs font-bold">{item.unit}</span>
+                                                                        </td>
+                                                                        <td className="py-2 px-4 text-right font-mono font-bold text-text-main">{item.quantity}</td>
+                                                                        <td className="py-2 px-4 text-right font-mono text-text-secondary">{item.weightKg.toFixed(2)} kg</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

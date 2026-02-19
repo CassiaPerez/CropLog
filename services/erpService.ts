@@ -230,6 +230,7 @@ const processErpItems = (items: ErpApiItem[]): Invoice[] => {
       description: item.descricao || 'Sem descrição',
       quantity: item.quantidade || 0,
       unit: item.unidade || 'UN',
+      lote: item.nro_pedido || undefined,
       weightKg: item.quantidade_kgl || 0,
       quantityPicked: 0,
     });

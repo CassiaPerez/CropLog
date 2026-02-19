@@ -107,9 +107,10 @@ export async function saveLoadMapToDatabase(loadMap: LoadMap): Promise<void> {
     if (loadMap.invoices && loadMap.invoices.length > 0) {
       const relations = loadMap.invoices
         .filter((invoice) => !!invoice?.id)
-        .map((invoice) => ({
+        .map((invoice, index) => ({
           load_map_id: persistedMapId,
           invoice_id: invoice.id,
+          sort_order: index,
         }));
 
       if (relations.length > 0) {
@@ -194,6 +195,7 @@ export async function loadLoadMapsFromDatabase(): Promise<LoadMap[]> {
         .from('load_map_invoices')
         .select(`
           invoice_id,
+          sort_order,
           invoices (
             id,
             number,
@@ -206,7 +208,8 @@ export async function loadLoadMapsFromDatabase(): Promise<LoadMap[]> {
             is_assigned
           )
         `)
-        .eq('load_map_id', mapData.id);
+        .eq('load_map_id', mapData.id)
+        .order('sort_order', { ascending: true });
 
       if (relationsError) {
         console.error(`Erro ao carregar notas do mapa ${mapData.code}:`, relationsError);
@@ -234,6 +237,7 @@ export async function loadLoadMapsFromDatabase(): Promise<LoadMap[]> {
             description: item.description,
             quantity: Number(item.quantity),
             unit: item.unit,
+            lote: item.lote || undefined,
             weightKg: Number(item.weight_kg),
             quantityPicked: item.quantity_picked ? Number(item.quantity_picked) : undefined,
           }));
