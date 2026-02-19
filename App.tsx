@@ -1311,6 +1311,8 @@ function App() {
                         <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Data NF</th>
                         <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Cliente</th>
                         <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Cidade</th>
+                        <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Lote</th>
+                        <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Embalagem</th>
                         <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Peso</th>
                         <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light">Valor</th>
                         <th className="p-6 text-base font-bold uppercase tracking-wider text-text-light text-right">Ações</th>
@@ -1318,7 +1320,7 @@ function App() {
                 </thead>
                 <tbody className="divide-y divide-border">
                     {availableInvoices.length === 0 ? (
-                        <tr><td colSpan={8} className="p-10 text-center text-text-light text-xl">Nenhuma nota disponível.</td></tr>
+                        <tr><td colSpan={10} className="p-10 text-center text-text-light text-xl">Nenhuma nota disponível.</td></tr>
                     ) : availableInvoices.map(inv => (
                         <tr key={inv.id} className={`hover:bg-slate-50 transition-colors cursor-pointer ${selectedInvoiceIds.has(inv.id) ? 'bg-primary/5' : ''}`} onClick={() => toggleInvoice(inv.id)}>
                             <td className="p-6 text-center">
@@ -1348,6 +1350,21 @@ function App() {
                             </td>
                             <td className="p-6 text-text-secondary text-lg font-medium">{inv.customerName}</td>
                             <td className="p-6 text-text-secondary text-lg">{inv.customerCity}</td>
+                            <td className="p-6">
+                              <div className="flex flex-wrap gap-1">
+                                {[...new Set(inv.items.map(i => i.lote).filter(Boolean))].map(lote => (
+                                  <span key={lote} className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md font-mono text-sm font-bold">{lote}</span>
+                                ))}
+                                {inv.items.every(i => !i.lote) && <span className="text-text-light text-sm">—</span>}
+                              </div>
+                            </td>
+                            <td className="p-6">
+                              <div className="flex flex-wrap gap-1">
+                                {[...new Set(inv.items.map(i => i.unit).filter(Boolean))].map(unit => (
+                                  <span key={unit} className="px-2 py-0.5 bg-sky-100 text-sky-800 rounded-md text-sm font-bold">{unit}</span>
+                                ))}
+                              </div>
+                            </td>
                             <td className="p-6 font-mono font-bold text-text-main text-lg">{inv.totalWeight.toFixed(2)} kg</td>
                             <td className="p-6 font-mono font-bold text-text-main text-lg">R$ {inv.totalValue.toFixed(2)}</td>
                             <td className="p-6 text-right">
@@ -2064,6 +2081,8 @@ function App() {
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">NF</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Data NF</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Cliente</th>
+                                <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Lote</th>
+                                <th className="py-4 px-4 text-base font-bold text-text-light uppercase">Embalagem</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase text-right">Valor</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase text-right">Peso</th>
                                 <th className="py-4 px-4 text-base font-bold text-text-light uppercase text-center">Ações</th>
@@ -2111,6 +2130,21 @@ function App() {
                                                 {new Date(inv.documentDate).toLocaleDateString('pt-BR')}
                                             </td>
                                             <td className="py-5 px-4 text-xl font-medium text-text-secondary">{inv.customerName}</td>
+                                            <td className="py-5 px-4">
+                                              <div className="flex flex-wrap gap-1">
+                                                {[...new Set(inv.items.map(i => i.lote).filter(Boolean))].map(lote => (
+                                                  <span key={lote} className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md font-mono text-sm font-bold">{lote}</span>
+                                                ))}
+                                                {inv.items.every(i => !i.lote) && <span className="text-text-light text-sm">—</span>}
+                                              </div>
+                                            </td>
+                                            <td className="py-5 px-4">
+                                              <div className="flex flex-wrap gap-1">
+                                                {[...new Set(inv.items.map(i => i.unit).filter(Boolean))].map(unit => (
+                                                  <span key={unit} className="px-2 py-0.5 bg-sky-100 text-sky-800 rounded-md text-sm font-bold">{unit}</span>
+                                                ))}
+                                              </div>
+                                            </td>
                                             <td className="py-5 px-4 text-xl font-mono font-bold text-text-main text-right">{formatCurrency(inv.totalValue)}</td>
                                             <td className="py-5 px-4 text-xl font-mono font-bold text-text-main text-right">{inv.totalWeight} kg</td>
                                             <td className="py-5 px-4 text-center">
@@ -2126,7 +2160,7 @@ function App() {
                                         </tr>
                                         {isExpanded && (
                                             <tr className="bg-slate-50 border-b border-border">
-                                                <td colSpan={7} className="px-8 py-4">
+                                                <td colSpan={9} className="px-8 py-4">
                                                     <div className="rounded-xl overflow-hidden border border-slate-200">
                                                         <table className="w-full text-sm">
                                                             <thead className="bg-slate-100">

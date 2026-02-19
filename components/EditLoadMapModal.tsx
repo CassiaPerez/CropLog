@@ -202,6 +202,14 @@ export function EditLoadMapModal({
                             {invoice.customerName}
                           </p>
                           <p className="text-sm text-gray-600">{invoice.customerCity}</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {[...new Set(invoice.items.map(i => i.lote).filter(Boolean))].map(lote => (
+                              <span key={lote} className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs font-mono font-bold">{lote}</span>
+                            ))}
+                            {[...new Set(invoice.items.map(i => i.unit).filter(Boolean))].map(unit => (
+                              <span key={unit} className="px-2 py-0.5 bg-sky-100 text-sky-800 rounded text-xs font-bold">{unit}</span>
+                            ))}
+                          </div>
                         </div>
                       </div>
                       <div className="text-right ml-4">
