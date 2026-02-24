@@ -258,31 +258,69 @@ function App() {
         let query = input;
         if (!query && fallbackRoute) query = fallbackRoute;
         if (!query) return null;
+
+        // Se já for embed pronto, retorna
         if (query.includes('output=embed')) return query;
+
+        // Se for URL, tenta extrair origem/destino/paradas
         if (query.startsWith('http')) {
             try {
                 const url = new URL(query);
-                const origin = url.searchParams.get('origin');
-                const destination = url.searchParams.get('destination');
-                if (origin && destination) {
-                    return `https://maps.google.com/maps?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(destination)}&output=embed`;
-                }
+
+                // 1) Formato /maps/dir/.../A/B/C/D
+                // Ex.: https://www.google.com/maps/dir/Origem/Parada1/Parada2/Destino
                 if (url.pathname.includes('/dir/')) {
                     const parts = url.pathname.split('/dir/');
                     if (parts[1]) {
-                        const pathParts = parts[1].split('/').filter(p => p);
+                        const pathParts = parts[1].split('/').filter((p) => p);
+
+                        // Normalmente: [origem, parada1, parada2, ..., destino]
                         if (pathParts.length >= 2) {
-                            return `https://maps.google.com/maps?saddr=${pathParts[0]}&daddr=${pathParts[1]}&output=embed`;
+                            const origin = decodeURIComponent(pathParts[0]);
+                            const stops = pathParts.slice(1).map((p) => decodeURIComponent(p));
+
+                            // Embed antigo aceita: daddr=DESTINO to:PARADA1 to:PARADA2...
+                            const daddrText = stops.join(' to:');
+
+                            return `https://maps.google.com/maps?saddr=${encodeURIComponent(
+                                origin
+                            )}&daddr=${encodeURIComponent(daddrText)}&output=embed`;
                         }
                     }
                 }
+
+                // 2) Formato /dir/?api=1&origin=...&destination=...&waypoints=...|...|...
+                const origin = url.searchParams.get('origin');
+                const destination = url.searchParams.get('destination');
+                const waypointsRaw = url.searchParams.get('waypoints');
+
+                if (origin && destination) {
+                    const waypoints = waypointsRaw
+                        ? waypointsRaw
+                              .split('|')
+                              .map((s) => s.trim())
+                              .filter(Boolean)
+                        : [];
+
+                    // daddr precisa conter destino + paradas (ou destino só)
+                    const stops = [destination, ...waypoints];
+                    const daddrText = stops.join(' to:');
+
+                    return `https://maps.google.com/maps?saddr=${encodeURIComponent(
+                        origin
+                    )}&daddr=${encodeURIComponent(daddrText)}&output=embed`;
+                }
+
+                // 3) Se tiver q=..., usa como fallback de busca
                 if (url.searchParams.has('q')) query = url.searchParams.get('q')!;
                 else if (destination) query = destination;
                 else if (fallbackRoute) query = fallbackRoute;
-            } catch (e) {
+            } catch {
                 if (fallbackRoute) query = fallbackRoute;
             }
         }
+
+        // Fallback: busca simples (mantém como já estava)
         return `https://maps.google.com/maps?q=${encodeURIComponent(query)}&t=&z=13&ie=UTF8&iwloc=&output=embed`;
     } catch {
         return null;
