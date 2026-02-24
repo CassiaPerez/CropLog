@@ -262,29 +262,54 @@ function App() {
         // Se já for embed pronto, retorna
         if (query.includes('output=embed')) return query;
 
-        // Se for URL, tenta extrair origem/destino/paradas
+        const buildEmbedFromPoints = (points: Array<{ lat: string; lng: string }>) => {
+            if (!points || points.length < 2) return null;
+            const origin = `${points[0].lat},${points[0].lng}`;
+            const stops = points.slice(1).map((p) => `${p.lat},${p.lng}`);
+            const daddrText = stops.join(' to:');
+            return `https://maps.google.com/maps?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(daddrText)}&output=embed`;
+        };
+
+        const tryParseGoogleDataCoords = (text: string) => {
+            // Links do Google Maps no formato moderno geralmente têm padrões:
+            // ...!1d{lng}!2d{lat}... repetidos para cada ponto na rota.
+            const reCoord = /!1d(-?\d+(?:\.\d+)?)!2d(-?\d+(?:\.\d+)?)/g;
+            const points: Array<{ lat: string; lng: string }> = [];
+            let match: RegExpExecArray | null;
+            while ((match = reCoord.exec(text)) !== null) {
+                const lng = match[1];
+                const lat = match[2];
+                // evita duplicados consecutivos
+                const last = points[points.length - 1];
+                if (!last || last.lat !== lat || last.lng !== lng) {
+                    points.push({ lat, lng });
+                }
+            }
+            return points.length >= 2 ? points : null;
+        };
+
+        // Caso o usuário cole só o trecho "data=!...", ainda assim tentamos parsear
+        const dataPoints = query.includes('data=') ? tryParseGoogleDataCoords(query) : null;
+        if (dataPoints) {
+            const embed = buildEmbedFromPoints(dataPoints);
+            if (embed) return embed;
+        }
+
+        // Se for URL completa, tenta extrair origem/destino/paradas
         if (query.startsWith('http')) {
             try {
                 const url = new URL(query);
 
                 // 1) Formato /maps/dir/.../A/B/C/D
-                // Ex.: https://www.google.com/maps/dir/Origem/Parada1/Parada2/Destino
                 if (url.pathname.includes('/dir/')) {
                     const parts = url.pathname.split('/dir/');
                     if (parts[1]) {
                         const pathParts = parts[1].split('/').filter((p) => p);
-
-                        // Normalmente: [origem, parada1, parada2, ..., destino]
                         if (pathParts.length >= 2) {
                             const origin = decodeURIComponent(pathParts[0]);
                             const stops = pathParts.slice(1).map((p) => decodeURIComponent(p));
-
-                            // Embed antigo aceita: daddr=DESTINO to:PARADA1 to:PARADA2...
                             const daddrText = stops.join(' to:');
-
-                            return `https://maps.google.com/maps?saddr=${encodeURIComponent(
-                                origin
-                            )}&daddr=${encodeURIComponent(daddrText)}&output=embed`;
+                            return `https://maps.google.com/maps?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(daddrText)}&output=embed`;
                         }
                     }
                 }
@@ -302,16 +327,21 @@ function App() {
                               .filter(Boolean)
                         : [];
 
-                    // daddr precisa conter destino + paradas (ou destino só)
                     const stops = [destination, ...waypoints];
                     const daddrText = stops.join(' to:');
 
-                    return `https://maps.google.com/maps?saddr=${encodeURIComponent(
-                        origin
-                    )}&daddr=${encodeURIComponent(daddrText)}&output=embed`;
+                    return `https://maps.google.com/maps?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(daddrText)}&output=embed`;
                 }
 
-                // 3) Se tiver q=..., usa como fallback de busca
+                // 3) Formato moderno com "data=!...!1d{lng}!2d{lat}..."
+                const fullText = url.toString();
+                const points = tryParseGoogleDataCoords(fullText);
+                if (points) {
+                    const embed = buildEmbedFromPoints(points);
+                    if (embed) return embed;
+                }
+
+                // 4) Se tiver q=..., usa como fallback de busca
                 if (url.searchParams.has('q')) query = url.searchParams.get('q')!;
                 else if (destination) query = destination;
                 else if (fallbackRoute) query = fallbackRoute;
@@ -320,7 +350,7 @@ function App() {
             }
         }
 
-        // Fallback: busca simples (mantém como já estava)
+        // Fallback: busca simples
         return `https://maps.google.com/maps?q=${encodeURIComponent(query)}&t=&z=13&ie=UTF8&iwloc=&output=embed`;
     } catch {
         return null;
