@@ -10,7 +10,7 @@ import { createLoadMap, getStatusColor } from './services/loadService';
 import { fetchErpInvoices, SyncProgress, fetchInvoiceByDocNumber } from './services/erpService';
 import { supabase } from './services/supabase';
 import { saveInvoicesToDatabase, loadInvoicesFromDatabase, updateInvoiceAssignedStatus, deleteAllInvoices, deleteAllData } from './services/invoiceService';
-import { saveLoadMapToDatabase, loadLoadMapsFromDatabase, deleteLoadMapFromDatabase } from './services/loadMapService';
+import { saveLoadMapToDatabase, loadLoadMapsFromDatabase, deleteLoadMapFromDatabase, patchLoadMapFields } from './services/loadMapService';
 import { serializeError, logError } from './utils/errorUtils';
 import { getActiveConfig, ApiConfig } from './services/apiConfigService';
 import { isSyncInProgress, setSyncInProgress, setLastSyncAt } from './services/syncStateService';
@@ -1836,9 +1836,71 @@ function App() {
     const [carrierSuggestions, setCarrierSuggestions] = useState<string[]>([]);
     const [showCarrierSuggestions, setShowCarrierSuggestions] = useState(false);
 
+    // ✅ Auto-salvamento ONLINE (Supabase) para não perder campos do Mapa de Carga
+    const autosaveTimerRef = useRef<number | null>(null);
+    const pendingPatchRef = useRef<Partial<Pick<LoadMap, 'carrierName' | 'vehiclePlate' | 'sourceCity' | 'route' | 'googleMapsLink' | 'logisticsNotes'>>>({});
+    const [isAutosaving, setIsAutosaving] = useState(false);
+    const [autosaveError, setAutosaveError] = useState<string | null>(null);
+
+    const scheduleAutosave = useCallback((patch: Partial<Pick<LoadMap, 'carrierName' | 'vehiclePlate' | 'sourceCity' | 'route' | 'googleMapsLink' | 'logisticsNotes'>>) => {
+        pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
+        setAutosaveError(null);
+
+        if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+
+        autosaveTimerRef.current = window.setTimeout(async () => {
+            const p = pendingPatchRef.current;
+            pendingPatchRef.current = {};
+
+            if (!Object.keys(p).length) return;
+
+            setIsAutosaving(true);
+            try {
+                await patchLoadMapFields(map.id, p);
+            } catch (e: any) {
+                const msg = e?.message || 'Falha no auto-salvamento';
+                setAutosaveError(msg);
+                // devolve pro buffer para tentar novamente depois
+                pendingPatchRef.current = { ...p, ...pendingPatchRef.current };
+            } finally {
+                setIsAutosaving(false);
+            }
+        }, 650);
+    }, [map.id]);
+
+    const flushAutosaveNow = useCallback(async () => {
+        if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+
+        const p = pendingPatchRef.current;
+        pendingPatchRef.current = {};
+
+        if (!Object.keys(p).length) return;
+
+        setIsAutosaving(true);
+        setAutosaveError(null);
+        try {
+            await patchLoadMapFields(map.id, p);
+        } catch (e: any) {
+            const msg = e?.message || 'Falha no salvamento';
+            setAutosaveError(msg);
+            pendingPatchRef.current = { ...p, ...pendingPatchRef.current };
+            throw e;
+        } finally {
+            setIsAutosaving(false);
+        }
+    }, [map.id]);
+
+    useEffect(() => {
+        return () => {
+            if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+        };
+    }, []);
+
     const handleCarrierChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setCarrierName(value);
+        scheduleAutosave({ carrierName: value });
+
         if (value.length > 0) {
             const filtered = CARRIER_LIST.filter(c => c.toLowerCase().includes(value.toLowerCase()));
             setCarrierSuggestions(filtered);
@@ -1846,28 +1908,38 @@ function App() {
         } else {
             setShowCarrierSuggestions(false);
         }
-    }, []);
+    }, [scheduleAutosave]);
 
     const handleVehiclePlateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        setVehiclePlate(e.target.value);
-    }, []);
+        const value = e.target.value;
+        setVehiclePlate(value);
+        scheduleAutosave({ vehiclePlate: value });
+    }, [scheduleAutosave]);
 
     const handleSourceCityChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        setSourceCity(e.target.value);
-    }, []);
+        const value = e.target.value;
+        setSourceCity(value);
+        scheduleAutosave({ sourceCity: value });
+    }, [scheduleAutosave]);
 
     const handleRouteChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        setRoute(e.target.value);
-    }, []);
+        const value = e.target.value;
+        setRoute(value);
+        scheduleAutosave({ route: value });
+    }, [scheduleAutosave]);
 
     const handleGoogleMapsLinkChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        isManualLinkRef.current = e.target.value.length > 0;
-        setGoogleMapsLink(e.target.value);
-    }, []);
+        const value = e.target.value;
+        isManualLinkRef.current = value.length > 0;
+        setGoogleMapsLink(value);
+        scheduleAutosave({ googleMapsLink: value });
+    }, [scheduleAutosave]);
 
     const handleNotesChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setNotes(e.target.value);
-    }, []);
+        const value = e.target.value;
+        setNotes(value);
+        scheduleAutosave({ logisticsNotes: value });
+    }, [scheduleAutosave]);
 
     // Calculated stats
     const totalValue = map.invoices.reduce((acc, i) => acc + i.totalValue, 0);
@@ -1900,6 +1972,8 @@ function App() {
     };
     
     const saveChanges = async () => {
+        try { await flushAutosaveNow(); } catch (_) { /* erro já exibido */ }
+
         let updatedMap: LoadMap | null = null;
 
         setLoadMaps(prev => prev.map(m => {
@@ -1933,8 +2007,17 @@ function App() {
         setCurrentView('LOAD_MAPS');
     };
 
-    const handleOpenEditModal = () => {
-        setEditingLoadMap(map);
+    const handleOpenEditModal = async () => {
+        try { await flushAutosaveNow(); } catch (_) { /* erro já exibido */ }
+        setEditingLoadMap({
+            ...map,
+            logisticsNotes: notes,
+            carrierName,
+            route,
+            sourceCity,
+            vehiclePlate,
+            googleMapsLink
+        });
         setIsEditLoadMapModalOpen(true);
     };
     
@@ -2022,6 +2105,9 @@ function App() {
                         </button>
                      )}
                      <button onClick={saveChanges} className="px-8 py-4 bg-text-main text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-black transition-all flex items-center gap-2"><Save size={24}/> Salvar</button>
+                     <div className="text-xs text-slate-500 mt-1">
+                       {isAutosaving ? 'Salvando...' : autosaveError ? `Erro ao salvar: ${autosaveError}` : 'Salvo'}
+                     </div>
                      {map.status === LoadStatus.PLANNING && (
                         <button onClick={releaseToSeparation} className="px-8 py-4 bg-accent text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-emerald-600 transition-all flex items-center gap-2"><CheckCircle2 size={24}/> Liberar</button>
                      )}
