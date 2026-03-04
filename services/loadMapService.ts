@@ -167,6 +167,40 @@ export async function saveLoadMapToDatabase(loadMap: LoadMap): Promise<void> {
   }
 }
 
+export async function patchLoadMapFields(
+  loadMapId: string,
+  patch: Partial<Pick<LoadMap, 'carrierName' | 'vehiclePlate' | 'sourceCity' | 'route' | 'googleMapsLink' | 'logisticsNotes'>>
+): Promise<void> {
+  try {
+    const dbPatch: Record<string, any> = {};
+
+    if ('carrierName' in patch) dbPatch.carrier_name = patch.carrierName ?? null;
+    if ('vehiclePlate' in patch) dbPatch.vehicle_plate = patch.vehiclePlate ?? null;
+    if ('sourceCity' in patch) dbPatch.source_city = patch.sourceCity ?? null;
+    if ('route' in patch) dbPatch.route = patch.route ?? null;
+    if ('googleMapsLink' in patch) dbPatch.google_maps_link = patch.googleMapsLink ? patch.googleMapsLink : null;
+    if ('logisticsNotes' in patch) dbPatch.logistics_notes = patch.logisticsNotes ? patch.logisticsNotes : null;
+
+    // Nada pra salvar
+    if (Object.keys(dbPatch).length === 0) return;
+
+    dbPatch.updated_at = new Date().toISOString();
+
+    const { error } = await supabase
+      .from('load_maps')
+      .update(dbPatch)
+      .eq('id', loadMapId);
+
+    if (error) {
+      throw error;
+    }
+  } catch (error: any) {
+    logError('patchLoadMapFields', serializeError(error));
+    throw error;
+  }
+}
+
+
 export async function loadLoadMapsFromDatabase(): Promise<LoadMap[]> {
   try {
     console.log('Carregando mapas de carga do Supabase...');
